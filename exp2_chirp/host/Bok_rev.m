@@ -1,7 +1,7 @@
 %% 利用回传数据恢复并显示图片（支持任意尺寸：帧间距与点阵尺寸自适应）
 %% 路径与图片选择（须与 Bok_emit 发送的同一张图片一致）%%
 here = fileparts(mfilename('fullpath'));  if isempty(here), here = pwd; end
-img_name = 'lzu2048b.bmp';            % ← 与发送端 Bok_emit 的 img_name 保持一致
+img_name = 'ren128b.bmp';           % ← 与发送端 Bok_emit 的 img_name 保持一致
 imgdir   = fullfile(here,'..','baseband_images');
 
 %% 抽样值 %%

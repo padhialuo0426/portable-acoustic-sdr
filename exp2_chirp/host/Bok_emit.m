@@ -5,7 +5,7 @@
 %% 路径与图片选择（相对脚本自身定位，不依赖当前工作目录）%%
 here = fileparts(mfilename('fullpath'));  if isempty(here), here = pwd; end
 imgdir   = fullfile(here,'..','baseband_images');
-img_name = 'lzu2048b.bmp';           % ← 改这里即可切换图片(同目录其它 bmp)
+img_name = 'ren128b.bmp';          % ← 改这里即可切换图片(同目录其它 bmp)
 %% 基本参数设置　%%
 fs=8000;                             %采样率
 T=1e-1;                              %0.1

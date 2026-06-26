@@ -7,6 +7,8 @@ build/
 # 运行/测试产物
 *.mat
 *.wav
+*.raw
+tx_truth.txt
 # 但保留作为固定样例的数据(供离线试解码)
 !**/sample_data/*.mat
 
