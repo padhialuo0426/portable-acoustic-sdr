@@ -1,0 +1,21 @@
+# 本地编辑器/工具配置
+.claude/
+
+# 构建产物
+build/
+
+# 运行/测试产物
+*.mat
+*.wav
+# 但保留作为固定样例的数据(供离线试解码)
+!**/sample_data/*.mat
+
+# Simulink 生成目录：保留 .c/.h 源码，忽略缓存与工程文件
+**/slprj/
+**/*.slxc
+**/*.slx.r*
+**/*_ert_rtw/*.mk
+**/*_ert_rtw/*.tmw
+**/*_ert_rtw/*.dmr
+**/*_ert_rtw/html/
+**/*_ert_rtw/tmwinternal/
