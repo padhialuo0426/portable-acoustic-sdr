@@ -86,6 +86,12 @@ make CC=aarch64-linux-gnu-gcc        # 目标板需有对应的 libasound
 | Jetson | `arecord -l` | `plughw:1,0` |
 | 香橙派 | `arecord -l` | `plughw:0,0` / `default` |
 
+用 `arecord -l` 找到麦克风那张卡的 **card 号 x**，跑时用 **`-d plughw:x,0`**。
+
+> **不要用 `default`**：树莓派的 `default` 多是 asym 配置（只接了播放、没有采集
+> slave），开采集会报 `capture slave is not defined / Invalid argument`。用
+> `plughw:` 而非 `hw:`（前者自动做采样率/声道转换）。card 号在 USB 插拔/重启后可能变。
+
 ## 发射端与取文件
 
 - **发射端**：PC 端 MATLAB 脚本 `host/single_fre_emit.m`，`sound()` 经扬声器

@@ -45,11 +45,33 @@ make                       # 真实模型 + ALSA（需 libasound2-dev）
 make AUDIO=null            # 真实模型 + 合成音频（无声卡验证）
 make MOCK=1                # 桩模型 + 合成音频
 
-./build/chirp_rx -d default -t 15        # 采集 15 秒
+arecord -l                               # ① 先看麦克风是 card 几
+./build/chirp_rx -d plughw:2,0 -t 15     # ② card 2 就写 2，采集 15 秒
 ```
 
 产出 `chirp5.mat`（变量 `toFileData5`，2×N：第1行时间，第2行判决值），格式与原
 工程一致，可直接喂给 `Bok_rev.m`。
+
+### 选对采集设备（`-d` 参数）
+
+平台差异全部收敛到 `-d` 这一个参数，代码无需改动：
+
+1. **`arecord -l`** 列出采集设备，找到麦克风那张卡的 **card 号 x**
+   （`device` 号通常是 0）。
+2. 跑的时候用 **`-d plughw:x,0`**（card 2 → `plughw:2,0`）。
+
+| 平台 | 典型设备名 |
+|---|---|
+| 树莓派（USB 声卡/麦克风） | `plughw:2,0` |
+| Jetson | `plughw:1,0` |
+| 香橙派 | `plughw:0,0` / `default` |
+
+> - 用 **`plughw:`** 而非 `hw:`——`plug` 会自动做采样率/声道转换（程序要
+>   8000Hz/2 声道，设备不一定原生支持）；直接 `hw:` 可能因格式不匹配打不开。
+> - **不要用 `default`**：树莓派的 `default` 多是 asym 配置（只接了播放、没有采集
+>   slave），开采集会报 `capture slave is not defined / Invalid argument`。
+> - card 号在 USB **重新插拔或重启后可能变**，跑之前 `arecord -l` 瞟一眼最稳。
+> - 采集用 `arecord -l`、播放用 `aplay -l`，两者 card 号可能不同，别混。
 
 ## 验证状态 ✅ 全部通过
 
