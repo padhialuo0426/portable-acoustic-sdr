@@ -26,6 +26,7 @@ static void usage(const char *prog)
         "用法: %s [选项]\n"
         "  -d <设备>   ALSA 采集设备 (默认 \"default\"，树莓派常为 plughw:2,0)\n"
         "  -t <秒>     采集指定秒数后自动停止；不给则跑到 Ctrl-C\n"
+        "  -c <声道>   采集声道数 1=单声道(默认,最稳) 2=立体声取左声道\n"
         "  -r <文件>   额外把未滤波原始麦克风信号存为 .mat (变量 rawAudio)\n"
         "  -h          显示帮助\n"
         "输出: chirp5.mat (变量 toFileData5, 2×N: 第1行时间, 第2行判决值)\n"
@@ -37,16 +38,23 @@ int main(int argc, char **argv)
     const char *cap_dev = "default";
     const char *raw_path = NULL;
     double dur_sec = 0.0;
+    int cap_ch = 1;                 /* 默认单声道：plughw 会把任意设备下混为单声道，
+                                       跨板最稳（某些板 2 声道交织布局不一致会解码失败）*/
     int opt;
 
-    while ((opt = getopt(argc, argv, "d:t:r:h")) != -1) {
+    while ((opt = getopt(argc, argv, "d:t:c:r:h")) != -1) {
         switch (opt) {
         case 'd': cap_dev  = optarg;       break;
         case 't': dur_sec  = atof(optarg); break;
+        case 'c': cap_ch   = atoi(optarg); break;
         case 'r': raw_path = optarg;       break;
         case 'h': usage(argv[0]); return 0;
         default:  usage(argv[0]); return 1;
         }
+    }
+    if (cap_ch != 1 && cap_ch != 2) {
+        fprintf(stderr, "错误：-c 只能是 1 或 2\n");
+        return 1;
     }
     unsigned long max_frames = (dur_sec > 0.0)
         ? (unsigned long)(dur_sec * MODEL_FRAME_RATE_HZ) : 0;
@@ -57,7 +65,7 @@ int main(int argc, char **argv)
     sigaction(SIGTERM, &sa, NULL);
 
     audio_dev_t *cap = audio_capture_open(cap_dev, MODEL_SAMPLE_RATE_HZ,
-                                          MODEL_NUM_CHANNELS, MODEL_FRAME_SAMPLES);
+                                          cap_ch, MODEL_FRAME_SAMPLES);
     if (!cap) {
         fprintf(stderr, "致命错误：无法打开采集设备 '%s'\n", cap_dev);
         return 1;
@@ -88,11 +96,12 @@ int main(int argc, char **argv)
         int n = audio_capture_read(cap, inter, MODEL_FRAME_SAMPLES);
         if (n <= 0) break;
 
-        /* 去交织 -> [L0..799, R0..799] */
+        /* 去交织 -> 模型输入 [L0..799, R0..799]。
+           单声道(cap_ch=1)：左右都填该单声道；立体声(cap_ch=2)：取左/右两路 */
         int16_t *in = model_input();
         for (int i = 0; i < MODEL_FRAME_SAMPLES; ++i) {
-            in[i]                       = inter[2 * i];
-            in[i + MODEL_FRAME_SAMPLES] = inter[2 * i + 1];
+            in[i]                       = inter[cap_ch * i];
+            in[i + MODEL_FRAME_SAMPLES] = inter[cap_ch * i + (cap_ch > 1 ? 1 : 0)];
         }
         if (raw_sink) {
             for (int i = 0; i < MODEL_FRAME_SAMPLES; ++i)
