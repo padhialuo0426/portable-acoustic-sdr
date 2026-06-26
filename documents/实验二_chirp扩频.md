@@ -116,6 +116,48 @@ exp2_chirp/
 帧长仅由发射端与采集时长决定。四张图均**文件直喂 BER=0、像素级还原**。
 大图 `lzu2048b`(~210s) 声学采集需 `-t` 给足。
 
+## 重新生成模型（改算法后）
+
+两种等价方式，产物都落到 `chirp_rev_detect_ert_rtw/`，任选其一。
+
+### 方式 A：脚本（`slbuild`，可批处理）
+
+```matlab
+cd <exp2_chirp/matlab>
+load_system('chirp_rev_detect')
+% …如需改算法在此修改…
+set_param('chirp_rev_detect','SystemTargetFile','ert.tlc');
+set_param('chirp_rev_detect','HardwareBoard','None');
+set_param('chirp_rev_detect','GenCodeOnly','on');
+set_param('chirp_rev_detect','MatFileLogging','off');
+slbuild('chirp_rev_detect');     % 代码直接生成到 chirp_rev_detect_ert_rtw/
+```
+
+### 方式 B：Simulink 界面（GUI，更直观）
+
+GUI 方式就是把上面 `set_param` + `slbuild` 用菜单点出来，产物完全一致。
+
+1. 打开 `chirp_rev_detect.slx`。
+2. 顶部 **APPS → Embedded Coder**，工具条出现 **C CODE** 选项卡。
+3. `Ctrl+E` 打开 **Configuration Parameters**，对齐下表（与方式 A 一一对应）：
+
+   | 面板 | 选项 | 设成 |
+   |---|---|---|
+   | Code Generation | System target file | `ert.tlc`（Browse 选 Embedded Coder） |
+   | Hardware Implementation | Hardware board | `None` |
+   | Hardware Implementation | Device vendor / type | `ARM Compatible` → `ARM Cortex-A (64-bit)` |
+   | Code Generation | Language | `C` |
+   | Code Generation | ☑ Generate code only | 勾上 |
+   | Code Generation → Interface | MAT-file logging | **取消勾选**（否则拖入 `rt_logging.c`，见 [Q&A](Q&A.md)） |
+
+4. **OK / Apply** 保存配置。
+5. 模型窗口按 **`Ctrl+B`**（或 **C CODE → Generate Code**）生成，结束后自动弹出
+   Code Generation Report 可逐文件查看。
+
+> 本模型含 15 个 Stateflow、且为**多速率**（`step0`@8000Hz + `step1`@10Hz），
+> 生成时间比实验一长属正常。生成后若 Inport/Outport 名字变了，同步改
+> `src/model_glue.c` 一处即可。
+
 ## 构建与运行
 
 ```bash

@@ -123,9 +123,11 @@ Fedora `sudo dnf install alsa-lib-devel`。（运行时只需 `libasound2`，编
 
 ### Q13. 改了模型怎么重新生成代码？
 
-见各实验文档"重新生成模型"。关键配置：`ert.tlc` + `HardwareBoard=None` + `GenCodeOnly=on`
-+ `MatFileLogging=off` + `Device Type=ARM Cortex-A (64-bit)`，`slbuild` 直接覆盖
-`matlab/*_ert_rtw/`，再 `make`。若 Inport/Outport 改了名，同步改 `src/model_glue.c` 一处。
+见各实验文档"重新生成模型"，**脚本（`slbuild`）和 Simulink 界面（APPS→Embedded Coder→
+`Ctrl+B`）两种方式产物一致**，按习惯选。关键配置一样：`ert.tlc` + `HardwareBoard=None`
++ `GenCodeOnly=on` + `MatFileLogging=off` + `Device Type=ARM Cortex-A (64-bit)`，
+生成到 `matlab/*_ert_rtw/`，再 `make`。若 Inport/Outport 改了名，同步改
+`src/model_glue.c` 一处。
 
 ### Q14. MATLAB 脚本中文注释乱码
 
