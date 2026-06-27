@@ -13,6 +13,7 @@
 - [`documents/README.md`](documents/README.md) — 工程总览：架构、运行条件、共享底层、构建总览
 - [`documents/实验一_单频信号.md`](documents/实验一_单频信号.md) — 实验一逐目录文件说明 + 用法
 - [`documents/实验二_chirp扩频.md`](documents/实验二_chirp扩频.md) — 实验二逐目录文件说明 + 用法
+- [`documents/手把手部署运行教程.md`](documents/手把手部署运行教程.md) — **从零到实测分步操作**（传代码上板→编译→实测→解码）
 - [`documents/Q&A.md`](documents/Q&A.md) — **常见问题与坑点**（先看这个）
 
 ## 快速开始
