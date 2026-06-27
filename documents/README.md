@@ -33,15 +33,14 @@
 
 ```mermaid
 flowchart LR
-    emit["PC · host/*_emit.m<br/>生成波形 / sound() 播放"]
-    spk["扬声器"]
-    air["空气<br/>(声学信道)"]
-    mic["麦克风"]
-    rx["开发板 · 接收端 C 程序<br/>ALSA 采集 → 模型 → 判决 → 写 .mat"]
-    dec["PC · 解码/还原<br/>Bok_rev.m / spectrum.m / python"]
+    emit["PC：host/*_emit.m<br/>生成波形 / sound() 播放"]
+    spk["PC：扬声器"]
+    mic["板上：麦克风"]
+    rx["开发板：接收端 C 程序<br/>ALSA 采集 → 模型 → 判决 → 写 .mat"]
+    dec["PC：解码/还原<br/>Bok_rev.m / spectrum.m / python"]
 
-    emit --> spk -->|声波| air -->|声波| mic --> rx
-    rx -->|"scp / FileZilla 拉回 .mat"| dec
+    emit --> spk -->|"空气(声学信道)"| mic --> rx
+    rx -->|"用 scp/FileZilla 把 .mat 从 Linux 板子传回 PC"| dec
 ```
 
 - **发射端**（`host/`）：纯 PC MATLAB，用 `sound()` 经声卡播放，本就与硬件支持包无关。
