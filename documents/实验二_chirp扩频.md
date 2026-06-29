@@ -25,17 +25,17 @@ flowchart TB
   `cos(2π·fc·t + π·μ·k·t²)`，fc=1000Hz，B=200Hz，T=0.1s/符号，k=B/T，fs=8000Hz，
   每符号 800 样本。
 - **接收检测**：用 μ=+1 与 μ=−1 两个匹配滤波器相关，比 `|u1|` vs `|u2|` 出 ±1 判决。
-- **板端只输出判决流**，帧同步/解码/BER/还原都在 PC 端（`Bok_rev.m` 或 `chirp_decode.py`）。
+- **板端只输出判决流**，帧同步/解码/BER/还原都在 PC 端（`bok_rev.m` 或 `chirp_decode.py`）。
 
 ## 数据流
 
 ```mermaid
 flowchart TD
-    emit["PC：host/Bok_emit.m<br/>(或 tools/chirp_tx.py)<br/>sound() / aplay 播放"]
+    emit["PC：host/bok_emit.m<br/>(或 tools/chirp_tx.py)<br/>sound() / aplay 播放"]
     spk["PC：扬声器"]
     mic["板上：麦克风"]
     rx["板上：build/chirp_rx<br/>ALSA 采集 → 模型(匹配滤波/Stateflow) → 每帧 ±1 判决 → chirp5.mat"]
-    dec["PC：host/Bok_rev.m<br/>(或 tools/chirp_decode.py)<br/>帧同步 → 硬判决 → BER → 还原图像"]
+    dec["PC：host/bok_rev.m<br/>(或 tools/chirp_decode.py)<br/>帧同步 → 硬判决 → BER → 还原图像"]
 
     emit --> spk -->|"空气"| mic --> rx
     rx -->|"用 scp 命令把 chirp5.mat 从 Linux 板子传回 PC"| dec
@@ -50,7 +50,7 @@ exp2_chirp/
 ├── matlab/            改造后的多速率模型 + 生成的 C 代码
 ├── baseband_images/   基带图片（待传信息）
 ├── host/              PC 端 MATLAB 脚本（发射/解码/仿真/GUI）
-└── tools/             免 MATLAB 的 Python 发射/解码（复刻 Bok_emit/Bok_rev）
+└── tools/             免 MATLAB 的 Python 发射/解码（复刻 bok_emit/bok_rev）
 ```
 
 ### `src/` + `include/`
@@ -86,7 +86,7 @@ exp2_chirp/
 |---|---|---|---|
 | `ren128b.bmp` | 16×8 | 128 | 默认演示图（最短，18.3s） |
 | `lan336.bmp` | 21×16 | 336 | — |
-| `ren512b.bmp` | 32×16 | 512 | `BOK.m` 纯仿真用 |
+| `ren512b.bmp` | 32×16 | 512 | `bok_sim.m` 纯仿真用 |
 | `lzu2048b.bmp` | 64×32 | 2048 | **「兰州大学」字样**（最长，~210s） |
 
 **帧结构（按图片自适应，`L`=图片比特数）**：
@@ -106,10 +106,9 @@ exp2_chirp/
 
 | 文件 | 作用 | 关键数据 |
 |---|---|---|
-| `Bok_emit.m` | 发射：读图（顶部 `img_name` 可切换，默认 `ren128b.bmp`）→ 自适应组帧 → `sound()` 播放 | 写 `info_all.mat` |
-| `Bok_rev.m` | 解码：读 `chirp5.mat` 帧同步/硬判决/BER/`imshow` 还原 | 读 `chirp5.mat` + `info_all.mat`；`img_name` 须与发送一致 |
-| `BOK.m` | 纯 MATLAB 端到端仿真（512位 `ren512b.bmp`，无硬件） | 读 `../baseband_images/ren512b.bmp` |
-| `bokgui.m/.fig` | GUIDE 启动器（取文件按钮改为提示用 scp/FileZilla） | — |
+| `bok_emit.m` | 发射：读图（顶部 `img_name` 可切换，默认 `ren128b.bmp`）→ 自适应组帧 → `sound()` 播放 | 写 `info_all.mat` |
+| `bok_rev.m` | 解码：读 `chirp5.mat` 帧同步/硬判决/BER/`imshow` 还原 | 读 `chirp5.mat` + `info_all.mat`；`img_name` 须与发送一致 |
+| `bok_sim.m` | 纯 MATLAB 端到端仿真（512位 `ren512b.bmp`，无硬件） | 读 `../baseband_images/ren512b.bmp` |
 | `setup_paths.m` | 把脚本/图片/模型目录加入 MATLAB 路径 | — |
 | `sample_data/` | 一组真实样例 `chirp5.mat`+`info_all.mat`，可离线试解码 | — |
 
@@ -119,8 +118,8 @@ exp2_chirp/
 
 | 文件 | 作用 |
 |---|---|
-| `chirp_tx.py` | 复刻 `Bok_emit`：读任意 1-bit BMP（自动宽高、自适应组帧）→ 输出 `chirp_tx.raw/.wav/tx_truth.txt`，并打印声学采集建议 `-t` 秒数。 |
-| `chirp_decode.py` | 复刻 `Bok_rev`：从同一 BMP 读尺寸 → 帧同步 → 硬判决 → BER → ASCII 还原图。 |
+| `chirp_tx.py` | 复刻 `bok_emit`：读任意 1-bit BMP（自动宽高、自适应组帧）→ 输出 `chirp_tx.raw/.wav/tx_truth.txt`，并打印声学采集建议 `-t` 秒数。 |
+| `chirp_decode.py` | 复刻 `bok_rev`：从同一 BMP 读尺寸 → 帧同步 → 硬判决 → BER → ASCII 还原图。 |
 
 ## 任意图片支持
 
@@ -182,7 +181,7 @@ arecord -l                                # 先看麦克风是 card 几
 ./build/chirp_rx -d plughw:2,0 -t 28      # card 号按实际改；采集 28 秒
 ```
 
-产出 `chirp5.mat`（变量 `toFileData5`，2×N：第1行时间，第2行判决值），喂 `Bok_rev.m`。
+产出 `chirp5.mat`（变量 `toFileData5`，2×N：第1行时间，第2行判决值），喂 `bok_rev.m`。
 
 ### 复现（两种方式，无需 MATLAB）
 
@@ -202,9 +201,9 @@ python3 tools/chirp_decode.py $IMG        # 帧同步 + BER + 还原图像
 
 ### MATLAB 方式（效果等价）
 
-把 `host/Bok_emit.m` 与 `Bok_rev.m` 顶部 `img_name` 改成同一张图；`Bok_emit` 发射、
-板上 `chirp_rx` 采集得 `chirp5.mat`、`scp` 回 `host/` 后 `Bok_rev` 解码。
-离线试解码：把 `sample_data/` 的样例拷到 `host/` 直接跑 `Bok_rev`。
+把 `host/bok_emit.m` 与 `bok_rev.m` 顶部 `img_name` 改成同一张图；`bok_emit` 发射、
+板上 `chirp_rx` 采集得 `chirp5.mat`、`scp` 回 `host/` 后 `bok_rev` 解码。
+离线试解码：把 `sample_data/` 的样例拷到 `host/` 直接跑 `bok_rev`。
 
 ## 验证状态 ✅
 

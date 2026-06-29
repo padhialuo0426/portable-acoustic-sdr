@@ -38,7 +38,7 @@ flowchart LR
     spk["PC：扬声器"]
     mic["板上：麦克风"]
     rx["开发板：接收端 C 程序<br/>ALSA 采集 → 模型 → 判决 → 写 .mat"]
-    dec["PC：解码/还原<br/>Bok_rev.m / spectrum.m / python"]
+    dec["PC：解码/还原<br/>bok_rev.m / spectrum.m / python"]
 
     emit --> spk -->|"空气(声学信道)"| mic --> rx
     rx -->|"用 scp/FileZilla 把 .mat 从 Linux 板子传回 PC"| dec

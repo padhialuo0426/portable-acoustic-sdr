@@ -3,7 +3,7 @@
  *
  * 流程：ALSA 采集 800 样本/帧(10Hz) → 去交织喂模型 → model_step_frame()
  *       (step1 + 800×step0) → 取标量 out_data → 写 chirp5.mat(toFileData5)。
- * PC 端 Bok_rev.m 读 chirp5.mat 的 toFileData5(2,:) 做帧同步/解码/BER/还原图像。
+ * PC 端 bok_rev.m 读 chirp5.mat 的 toFileData5(2,:) 做帧同步/解码/BER/还原图像。
  *
  * 时序：ALSA 阻塞读 800 帧@8000Hz 天然 100ms = 10Hz 实时节拍；每帧内的
  * 800 次 step0 是计算性的，在该 100ms 预算内完成。

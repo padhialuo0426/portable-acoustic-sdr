@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-chirp_tx.py ── 复刻 Bok_emit.m 的 BOK chirp 扩频发射，生成测试信号。
+chirp_tx.py ── 复刻 bok_emit.m 的 BOK chirp 扩频发射，生成测试信号。
 不需要 MATLAB。**支持 baseband_images/ 下任意 1-bit BMP**（自动读宽高、
 按图片比特数组帧，帧头/帧尾各一段 15 位 m 序列）。输出:
   chirp_tx.raw  (单声道 int16, 喂 `chirp_rx -d chirp_tx.raw` 做无噪声链路测试)
@@ -35,7 +35,7 @@ def px(row, col):
 info_all = [px(nn, mm) for mm in range(w) for nn in range(H)]
 L = len(info_all)                                  # 图片比特数 = w*H
 
-# 组帧（与 Bok_emit 帧结构一致，长度随图片自适应）:
+# 组帧（与 bok_emit 帧结构一致，长度随图片自适应）:
 #   [0:10]=0 前导/信号检测  [10:20]=1010… 交替段
 #   [20:35]=m_seq 帧头      [35:35+L]=图片  [35+L:35+L+15]=m_seq 帧尾
 #   末尾 GUARD 个 0：补偿接收模型 1 符号检测时延 + 防止帧尾 m 序列落在 EOF 被截断

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-chirp_decode.py ── 复刻 Bok_rev.m 的解码：读 chirp_rx 产出的 chirp5.mat
+chirp_decode.py ── 复刻 bok_rev.m 的解码：读 chirp_rx 产出的 chirp5.mat
 (toFileData5 判决流)，相关 m 序列做帧同步、硬判决、算 BER、还原图像。
 不需要 MATLAB。**支持任意尺寸图片**：从原始 BMP 自动读宽高，
 帧头/帧尾两段 m 序列间距 = 图片比特数+15，按真实宽高还原点阵。

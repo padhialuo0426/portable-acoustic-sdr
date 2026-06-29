@@ -1,13 +1,13 @@
 %% 利用回传数据恢复并显示图片（支持任意尺寸：帧间距与点阵尺寸自适应）
-%% 路径与图片选择（须与 Bok_emit 发送的同一张图片一致）%%
+%% 路径与图片选择（须与 bok_emit 发送的同一张图片一致）%%
 here = fileparts(mfilename('fullpath'));  if isempty(here), here = pwd; end
-img_name = 'ren128b.bmp';           % ← 与发送端 Bok_emit 的 img_name 保持一致
+img_name = 'ren128b.bmp';           % ← 与发送端 bok_emit 的 img_name 保持一致
 imgdir   = fullfile(here,'..','baseband_images');
 
 %% 抽样值 %%
 load(fullfile(here,'chirp5.mat'))     %接收端(chirp_rx)产出的抽样判决数据，放到本目录
 x=toFileData5(2,:);
-load(fullfile(here,'info_all.mat'))   %Bok_emit 发射时生成的原始比特，用于算 BER
+load(fullfile(here,'info_all.mat'))   %bok_emit 发射时生成的原始比特，用于算 BER
 
 %% 由发送图片确定点阵尺寸与帧间距 %%
 imdata=imread(fullfile(imgdir,img_name));

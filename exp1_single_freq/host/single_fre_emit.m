@@ -1,5 +1,5 @@
 %% 实验一 · 发射端：PC 端 MATLAB 脚本，用 sound() 经扬声器播放单频信号
-%  与实验二的 Bok_emit.m 对称——发射端始终是 PC 脚本，不上板、不依赖硬件支持包。
+%  与实验二的 bok_emit.m 对称——发射端始终是 PC 脚本，不上板、不依赖硬件支持包。
 %  接收端是板上的 single_fre_rev（../build/sdr_rx），采集→滤波→记录到 .mat。
 % clc
 % clear

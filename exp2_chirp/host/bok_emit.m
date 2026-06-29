@@ -40,7 +40,7 @@ info(11:20)=[1 0 1 0 1 0 1 0 1 0];      %交替段
 info(21:35)=m_seq;                      %帧头
 info(36:35+L)=info_all;                 %图片信息序列
 info(36+L:50+L)=m_seq;                  %帧尾
-save(fullfile(here,'info_all.mat'),'info_all')   %存到脚本所在目录，供 Bok_rev 算 BER
+save(fullfile(here,'info_all.mat'),'info_all')   %存到脚本所在目录，供 bok_rev 算 BER
 
 %% 信息与斜率miu进行映射 %%
 miu=zeros(1,code);
