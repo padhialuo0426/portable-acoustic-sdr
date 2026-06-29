@@ -69,7 +69,7 @@ done
 ### Q6. 大图声学采集解不出（小图却没问题）
 
 **原因**：信号太长、采集时长 `-t` 不够，帧尾还没采到就停了。
-**解决**：`tools/chirp_tx.py` 会**打印建议的 `-t` 秒数**，按它给足（如兰州大学 2048 位
+**解决**：`host/bok_emit.py` 会**打印建议的 `-t` 秒数**，按它给足（如兰州大学 2048 位
 信号 ~210s，要 `-t 217` 以上）。
 
 ---
@@ -126,7 +126,7 @@ Fedora `sudo dnf install alsa-lib-devel`。（运行时只需 `libasound2`，编
 见各实验文档"重新生成模型"，**脚本（`slbuild`）和 Simulink 界面（APPS→Embedded Coder→
 `Ctrl+B`）两种方式产物一致**，按习惯选。关键配置一样：`ert.tlc` + `HardwareBoard=None`
 + `GenCodeOnly=on` + `MatFileLogging=off` + `Device Type=ARM Cortex-A (64-bit)`，
-生成到 `matlab/*_ert_rtw/`，再 `make`。若 Inport/Outport 改了名，同步改
+生成到 `simulink_model/*_ert_rtw/`，再 `make`。若 Inport/Outport 改了名，同步改
 `src/model_glue.c` 一处。
 
 ### Q14. MATLAB 脚本中文注释乱码

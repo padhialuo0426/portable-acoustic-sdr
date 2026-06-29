@@ -25,17 +25,17 @@ flowchart TB
   `cos(2π·fc·t + π·μ·k·t²)`，fc=1000Hz，B=200Hz，T=0.1s/符号，k=B/T，fs=8000Hz，
   每符号 800 样本。
 - **接收检测**：用 μ=+1 与 μ=−1 两个匹配滤波器相关，比 `|u1|` vs `|u2|` 出 ±1 判决。
-- **板端只输出判决流**，帧同步/解码/BER/还原都在 PC 端（`bok_rev.m` 或 `chirp_decode.py`）。
+- **板端只输出判决流**，帧同步/解码/BER/还原都在 PC 端（`bok_rev.m` 或 `bok_rev.py`）。
 
 ## 数据流
 
 ```mermaid
 flowchart TD
-    emit["PC：host/bok_emit.m<br/>(或 tools/chirp_tx.py)<br/>sound() / aplay 播放"]
+    emit["PC：host/bok_emit.m<br/>(或 host/bok_emit.py)<br/>sound() / aplay 播放"]
     spk["PC：扬声器"]
     mic["板上：麦克风"]
     rx["板上：build/chirp_rx<br/>ALSA 采集 → 模型(匹配滤波/Stateflow) → 每帧 ±1 判决 → chirp5.mat"]
-    dec["PC：host/bok_rev.m<br/>(或 tools/chirp_decode.py)<br/>帧同步 → 硬判决 → BER → 还原图像"]
+    dec["PC：host/bok_rev.m<br/>(或 host/bok_rev.py)<br/>帧同步 → 硬判决 → BER → 还原图像"]
 
     emit --> spk -->|"空气"| mic --> rx
     rx -->|"用 scp 命令把 chirp5.mat 从 Linux 板子传回 PC"| dec
@@ -47,10 +47,9 @@ flowchart TD
 exp2_chirp/
 ├── Makefile           构建（MODEL/AUDIO 开关）
 ├── src/  include/      板级运行时 + 契约
-├── matlab/            改造后的多速率模型 + 生成的 C 代码
+├── simulink_model/    改造后的多速率模型 + 生成的 C 代码
 ├── baseband_images/   基带图片（待传信息）
-├── host/              PC 端 MATLAB 脚本（发射/解码/仿真/GUI）
-└── tools/             免 MATLAB 的 Python 发射/解码（复刻 bok_emit/bok_rev）
+└── host/              PC 端脚本：MATLAB 发射/解码/仿真 + 免 MATLAB 的 Python 复刻
 ```
 
 ### `src/` + `include/`
@@ -61,7 +60,7 @@ exp2_chirp/
 | `src/model_glue.c` | 耦合 Simulink 符号名的薄层：`chirp_rev_detect_U.AudioIn` 输入、`chirp_rev_detect_Y.out_data` 判决。封装多速率 `step1 + 800×step0`。 |
 | `include/model_iface.h` | 契约：`MODEL_FRAME_SAMPLES=800`、`MODEL_FRAME_RATE_HZ=10` 等，`model_step_frame()` 声明。 |
 
-### `matlab/` — 模型与生成代码
+### `simulink_model/` — 模型与生成代码
 
 | 文件 | 作用 |
 |---|---|
@@ -102,7 +101,7 @@ exp2_chirp/
 
 两段 m 序列起点间距 = `L+15`，解码端据此自适应定位、并按真实宽高还原点阵。
 
-### `host/` — PC 端 MATLAB 脚本
+### `host/` — PC 端 MATLAB 脚本（发射/解码/仿真）
 
 | 文件 | 作用 | 关键数据 |
 |---|---|---|
@@ -114,12 +113,12 @@ exp2_chirp/
 
 > 路径已全部改为相对脚本自身定位（`here=fileparts(mfilename('fullpath'))`），换目录不会找不到文件；编码统一 UTF-8（原工程 GBK/UTF-8 混编，见 [Q&A](Q&A.md)）。
 
-### `tools/` — 免 MATLAB 的 Python 复刻
+### `host/` — 免 MATLAB 的 Python 复刻（与上面 `.m` 同名配对）
 
 | 文件 | 作用 |
 |---|---|
-| `chirp_tx.py` | 复刻 `bok_emit`：读任意 1-bit BMP（自动宽高、自适应组帧）→ 输出 `chirp_tx.raw/.wav/tx_truth.txt`，并打印声学采集建议 `-t` 秒数。 |
-| `chirp_decode.py` | 复刻 `bok_rev`：从同一 BMP 读尺寸 → 帧同步 → 硬判决 → BER → ASCII 还原图。 |
+| `bok_emit.py` | 复刻 `bok_emit.m`：读任意 1-bit BMP（自动宽高、自适应组帧）→ 输出 `chirp_tx.raw/.wav/tx_truth.txt`，并打印声学采集建议 `-t` 秒数。 |
+| `bok_rev.py` | 复刻 `bok_rev.m`：从同一 BMP 读尺寸 → 帧同步 → 硬判决 → BER → ASCII 还原图。 |
 
 ## 任意图片支持
 
@@ -135,7 +134,7 @@ exp2_chirp/
 ### 方式 A：脚本（`slbuild`，可批处理）
 
 ```matlab
-cd <exp2_chirp/matlab>
+cd <exp2_chirp/simulink_model>
 load_system('chirp_rev_detect')
 % …如需改算法在此修改…
 set_param('chirp_rev_detect','SystemTargetFile','ert.tlc');
@@ -188,7 +187,7 @@ arecord -l                                # 先看麦克风是 card 几
 ```bash
 IMG=baseband_images/lzu2048b.bmp          # 换任意图片；缺省 ren128b.bmp
 
-python3 tools/chirp_tx.py $IMG            # 生成发射信号 + 打印建议 -t
+python3 host/bok_emit.py $IMG             # 生成发射信号 + 打印建议 -t
 
 # A) 文件直喂（无声学噪声，纯测 DSP/解码）
 make AUDIO=file && ./build/chirp_rx -d chirp_tx.raw
@@ -196,7 +195,7 @@ make AUDIO=file && ./build/chirp_rx -d chirp_tx.raw
 # B) 真实声学（扬声器播放 + 麦克风采集；-t 用建议值）
 make && (aplay -q chirp_tx.wav &) ; ./build/chirp_rx -d plughw:2,0 -t 24
 
-python3 tools/chirp_decode.py $IMG        # 帧同步 + BER + 还原图像
+python3 host/bok_rev.py $IMG              # 帧同步 + BER + 还原图像
 ```
 
 ### MATLAB 方式（效果等价）
