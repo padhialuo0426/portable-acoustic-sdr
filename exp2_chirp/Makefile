@@ -4,7 +4,7 @@
 #  共享底层(音频/MAT)在 ../common，本实验专属(模型/胶水/main)在本目录。
 #
 #  两个独立开关：
-#    MODEL = real (默认) | mock      real=编译 matlab/ 下的多速率生成代码
+#    MODEL = real (默认) | mock      real=编译 simulink_model/ 下的多速率生成代码
 #    AUDIO = alsa (默认) | null      null=合成音频(无需声卡/ALSA)
 #
 #    make                真实模型 + ALSA        ← 板上部署
@@ -19,8 +19,8 @@ CFLAGS  ?= -O2 -Wall -Wextra -std=c11
 CFLAGS  += -D_GNU_SOURCE
 
 COMMON      := ../common
-MODEL_DIR   ?= matlab/chirp_rev_detect_ert_rtw
-SHAREDUTILS := $(wildcard matlab/slprj/ert/_sharedutils)
+MODEL_DIR   ?= simulink_model/chirp_rev_detect_ert_rtw
+SHAREDUTILS := $(wildcard simulink_model/slprj/ert/_sharedutils)
 
 CFLAGS  += -Iinclude -I$(COMMON)/include
 LDLIBS  := -lm

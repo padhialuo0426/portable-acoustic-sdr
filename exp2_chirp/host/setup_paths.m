@@ -8,6 +8,6 @@ function setup_paths()
     here = fileparts(mfilename('fullpath'));
     addpath(here);                                   % host/ 下的脚本
     addpath(fullfile(here,'..','baseband_images'));  % 基带图片
-    addpath(fullfile(here,'..','matlab'));           % chirp_rev_detect.slx
+    addpath(fullfile(here,'..','simulink_model'));   % chirp_rev_detect.slx
     fprintf('实验二路径已加入。可用: bok_sim / bok_emit / bok_rev\n');
 end
