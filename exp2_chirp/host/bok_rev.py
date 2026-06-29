@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-chirp_decode.py ── 复刻 bok_rev.m 的解码：读 chirp_rx 产出的 chirp5.mat
+bok_rev.py ── 复刻 bok_rev.m 的解码：读 chirp_rx 产出的 chirp5.mat
 (toFileData5 判决流)，相关 m 序列做帧同步、硬判决、算 BER、还原图像。
 不需要 MATLAB。**支持任意尺寸图片**：从原始 BMP 自动读宽高，
 帧头/帧尾两段 m 序列间距 = 图片比特数+15，按真实宽高还原点阵。
 
-用法: python3 chirp_decode.py [图片.bmp] [chirp5.mat]
+用法: python3 bok_rev.py [图片.bmp] [chirp5.mat]
       默认 ../baseband_images/ren128b.bmp 与 ../chirp5.mat
 """
 import struct, array, sys, os
@@ -15,7 +15,7 @@ bmp  = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, '..', 'baseband_
 matf = sys.argv[2] if len(sys.argv) > 2 else os.path.join(here, '..', 'chirp5.mat')
 mseq_pm = [-1,1,1,-1,-1,1,-1,1,-1,-1,-1,-1,1,1,1]
 
-# 原始图片：自动宽高 + 真值比特（列优先, 与 chirp_tx 一致）
+# 原始图片：自动宽高 + 真值比特（列优先, 与 bok_emit 一致）
 d = open(bmp, 'rb').read()
 off = struct.unpack('<I', d[10:14])[0]
 w   = struct.unpack('<i', d[18:22])[0]
