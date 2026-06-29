@@ -152,18 +152,6 @@ Q3 的香橙派双声道 bug 就是这么定位出来的。**先验 DSP、再验
 
 ---
 
-## 五、Git / 协作
-
-### Q16. `git push` 卡住 / 报 "correct access rights"
-
-**现象**：push 有时挂住很久，或后台报 `Please make sure you have the correct access rights`。
-**原因**：`git push` 经 SSH 连 GitHub 要用 ssh-agent 里的密钥；一旦命令被转到**后台**
-执行，后台进程**拿不到 ssh-agent**，认证失败或挂起。
-**解决**：在**自己的交互终端前台**推（最稳），别让它进后台。卡住时
-`ssh-add -l` 看密钥是否加载。
-
----
-
 ## 附：被移除/废弃的东西（别再找了）
 
 - **`:6666` TCP 文件服务器 + `client.m`**：原工程用来从板子取文件，已删除——
