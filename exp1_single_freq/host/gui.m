@@ -516,7 +516,9 @@ function gui()
         cfg = java.util.Properties();
         cfg.put('StrictHostKeyChecking','no');   % 与命令行分支的 accept-new 对齐
         [u, h] = jUserHost();
-        s = j.getSession(u, h, 22);
+        [ip, note] = resolveHost(h);
+        if ~isempty(note), logf('  主机 %s %s', h, note); end
+        s = j.getSession(u, ip, 22);
         s.setPassword(A.pass.Value);
         s.setConfig(cfg);
         s.setTimeout(60000);      % 板上 make 期间输出有间隔，别让读超时打断
@@ -535,6 +537,34 @@ function gui()
     function [u, h] = jUserHost()
         h = strtrim(A.host.Value);
         u = strtrim(A.user.Value);
+    end
+
+    % 自己解析主机名、优先取 IPv4，再把地址交给 JSch。两个实测踩到的坑：
+    %   1. 板子常同时有全局 IPv6（树莓派默认就有两个 2001:...），而 Java 默认
+    %      优先 IPv6，那些地址未必可路由 -> NoRouteToHost；
+    %   2. 本机若装了 Clash/Surge 这类做 fake-IP DNS 的代理软件，解析不了的
+    %      主机名会被统统映射到 198.18.0.0/15 的假地址（实测 pi5 -> 198.18.1.254），
+    %      连出去必然失败。系统 ssh 不会踩这个坑是因为它读 ~/.ssh/config 把别名
+    %      直接换成真实 IP、根本不做 DNS 解析；JSch 没有这层保护。
+    function [ip, note] = resolveHost(h)
+        note = '';  ip = h;
+        try
+            addrs = java.net.InetAddress.getAllByName(h);
+        catch
+            note = '解析不了，建议直接填 IP';  return
+        end
+        pick = '';
+        for k = 1:numel(addrs)
+            a = char(addrs(k).getHostAddress());
+            if ~contains(a, ':'), pick = a; break, end      % 优先 IPv4
+        end
+        if isempty(pick), pick = char(addrs(1).getHostAddress()); end
+        ip = pick;
+        if ~strcmp(ip, h), note = sprintf('解析为 %s', ip); end
+        if startsWith(ip,'198.18.') || startsWith(ip,'198.19.')
+            note = sprintf(['%s —— 这是代理软件(Clash/Surge 等)的 fake-IP，' ...
+                            '不是板子的真实地址。请在「主机/IP」直接填局域网 IP'], note);
+        end
     end
 
     function t = jTarget()
@@ -624,8 +654,17 @@ function gui()
     function s = jerr(e)
         s = firstLine(regexprep(e.message, '^Java exception occurred:\s*', ''));
         s = strtrim(regexprep(s, '^com\.jcraft\.jsch\.\w+:\s*', ''));
+        m = e.message;
         if strcmpi(s, 'Auth fail') || strcmpi(s, 'Auth cancel')
             s = '认证失败——用户名或密码不对';
+        elseif contains(m, 'NoRouteToHostException')
+            s = '网络不可达——「主机/IP」填的地址路由不过去，建议直接填局域网 IP';
+        elseif contains(m, 'UnknownHostException')
+            s = '主机名解析不了——建议直接填局域网 IP';
+        elseif contains(m, 'ConnectException')
+            s = '连接被拒——IP 对吗？板子上 sshd 开着吗？';
+        elseif contains(m, 'SocketTimeoutException') || contains(m, 'timeout')
+            s = '连接超时——IP 对吗？板子和本机在同一网段吗？';
         end
         if isempty(s), s = firstLine(e.message); end
     end
