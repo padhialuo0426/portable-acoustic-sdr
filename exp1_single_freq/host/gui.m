@@ -99,6 +99,10 @@ function gui()
         guard = onCleanup(@() setBusy(false));
         try
             logf('--- ① 自检 ---');
+            % 先清空再重新探测：自检有好几条提前 return 的分支（连不上、枚举
+            % 失败…），若不清空，上一次成功时填的路径会继续显示，而它可能早已
+            % 不成立了。自检的语义应当是"显示的一切都是刚刚验证过的"。
+            A.rdir.Value = '';  A.rdir.Enable = 'off';
             [~,tgt,~,~] = sshBase();
             [st,out] = ssh('hostname');
             if st ~= 0
@@ -107,19 +111,23 @@ function gui()
             end
             logStep(sprintf('连接 %s', tgt), '✓', '%s', strtrim(out));
 
-            % 板上路径由实验目录名推出，不需要用户填
-            [~, expName] = fileparts(fileparts(A.here));
-            A.rdir.Value  = sprintf('~/portable-acoustic-sdr/%s', expName);
-            A.rdir.Enable = 'on';
-
             if ~refreshAlsa(), return, end
 
-            [st,~] = ssh(sprintf('test -d %s', A.rdir.Value));
+            % 「板上路径」显示的必须是**板上确实存在**的目录，不能是本地推算出来
+            % 的预期值——否则板子上被 rm -rf 之后重开界面，日志说"还没同步"、
+            % 输入框却显示着路径，自相矛盾。所以先探再填，探不到就清空并置灰。
+            [~, expName] = fileparts(fileparts(A.here));
+            guess = sprintf('~/portable-acoustic-sdr/%s', expName);
+            [st,~] = ssh(sprintf('test -d %s', guess));
             if st ~= 0
-                logStep('板上源码', '△', '还没同步，请点「② 同步源码到板上并编译」');
+                A.rdir.Value  = '';
+                A.rdir.Enable = 'off';
+                logStep('板上源码', '△', '板上没有，请点「② 同步源码到板上并编译」');
                 return
             end
-            logStep('板上源码', '✓', '%s', A.rdir.Value);
+            A.rdir.Value  = guess;
+            A.rdir.Enable = 'on';
+            logStep('板上源码', '✓', '%s', guess);
 
             [st,~] = ssh(sprintf('test -x %s/build/sdr_rx', A.rdir.Value));
             if st == 0
@@ -339,7 +347,14 @@ function gui()
         if isempty(k) || isempty(A.odevIDs)
             p = audioplayer(y, A.fs);
         else
-            p = audioplayer(y, A.fs, 16, A.odevIDs(k));
+            try
+                p = audioplayer(y, A.fs, 16, A.odevIDs(k));
+            catch
+                % 枚举之后把耳机拔了/断了，device ID 已失效。这里不能悄悄退回
+                % 系统默认输出——那正是"声音跑进耳机、板上采到全 0"的成因。
+                error(['输出设备「%s」已不可用（拔掉了？）。' ...
+                       '点「输出设备」旁的 ⟳ 重新枚举后再试。'], A.odev.Value);
+            end
         end
         if ~isempty(regexpi(A.odev.Value, 'airpod|headphone|headset|bluetooth|耳机', 'once'))
             logStep('输出设备', '△', '像是耳机，声音不会经空气传到板上麦克风');
@@ -472,9 +487,12 @@ function gui()
 
     % 自检之前，板上路径和采集设备都是空的，直接跑必然失败——提前说清楚
     function ok = ready()
-        ok = ~isempty(strtrim(A.rdir.Value)) && ~isempty(alsaDev());
-        if ~ok
-            logStep('前置检查', '✗', '还没自检，先点「① 自检」');
+        ok = false;
+        if isempty(alsaDev())
+            logStep('前置检查', '✗', '还没自检，先点「① 自检」');  return
+        end
+        if isempty(strtrim(A.rdir.Value))
+            logStep('前置检查', '✗', '板上没有源码，先点「② 同步源码到板上并编译」');
             return
         end
         [st,~] = ssh(sprintf('test -x %s/build/sdr_rx', A.rdir.Value));
