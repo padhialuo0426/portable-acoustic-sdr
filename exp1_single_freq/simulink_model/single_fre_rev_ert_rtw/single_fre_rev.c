@@ -7,9 +7,9 @@
  *
  * Code generated for Simulink model 'single_fre_rev'.
  *
- * Model version                  : 12.1
+ * Model version                  : 12.2
  * Simulink Coder version         : 25.2 (R2025b) 28-Jul-2025
- * C/C++ source code generated on : Fri Jun 26 16:20:25 2026
+ * C/C++ source code generated on : Tue Sep 15 12:28:55 2026
  *
  * Target selection: ert.tlc
  * Embedded hardware selection: ARM Compatible->ARM Cortex-A (64-bit)
@@ -37,19 +37,37 @@ RT_MODEL_single_fre_rev_T *const single_fre_rev_M = &single_fre_rev_M_;
 /* Model step function */
 void single_fre_rev_step(void)
 {
-  int32_T n;
-  int32_T srcIdx;
+  int32_T q0;
+  int32_T q0_0;
+  int32_T q1;
   real32_T rtb_DigitalFilter[80];
   real32_T rtb_Gain[80];
   real32_T acc;
-  for (srcIdx = 0; srcIdx < 80; srcIdx++) {
+  for (q0_0 = 0; q0_0 < 80; q0_0++) {
+    /* Sum: '<S1>/Matrix Sum' incorporates:
+     *  Inport: '<Root>/AudioIn'
+     */
+    q0 = single_fre_rev_U.AudioIn[q0_0];
+    q1 = single_fre_rev_U.AudioIn[q0_0 + 80];
+    if ((q0 < 0) && (q1 < MIN_int32_T - q0)) {
+      q0 = MIN_int32_T;
+    } else if ((q0 > 0) && (q1 > MAX_int32_T - q0)) {
+      q0 = MAX_int32_T;
+    } else {
+      q0 += q1;
+    }
+
+    if (q0 > 32767) {
+      q0 = 32767;
+    } else if (q0 < -32768) {
+      q0 = -32768;
+    }
+
     /* Gain: '<S1>/Gain' incorporates:
      *  DataTypeConversion: '<S1>/ 1'
-     *  Inport: '<Root>/AudioIn'
      *  Sum: '<S1>/Matrix Sum'
      */
-    rtb_Gain[srcIdx] = (real32_T)(int16_T)(single_fre_rev_U.AudioIn[srcIdx + 80]
-      + single_fre_rev_U.AudioIn[srcIdx]) * single_fre_rev_P.Gain_Gain;
+    rtb_Gain[q0_0] = single_fre_rev_P.Gain_Gain * (real32_T)(int16_T)q0;
   }
 
   /* DiscreteFir: '<S3>/Digital Filter' incorporates:
@@ -57,46 +75,46 @@ void single_fre_rev_step(void)
    *  Gain: '<S1>/Gain'
    */
   /* Reverse the coefficients */
-  for (srcIdx = 0; srcIdx < 151; srcIdx++) {
-    single_fre_rev_DW.DigitalFilter_simRevCoeff[150 - srcIdx] =
-      single_fre_rev_P.DigitalFilter_Coefficients[srcIdx];
+  for (q0_0 = 0; q0_0 < 151; q0_0++) {
+    single_fre_rev_DW.DigitalFilter_simRevCoeff[150 - q0_0] =
+      single_fre_rev_P.DigitalFilter_Coefficients[q0_0];
   }
 
   /* Reverse copy the states from States_Dwork to ContextBuff_Dwork */
-  for (srcIdx = 0; srcIdx < 150; srcIdx++) {
-    single_fre_rev_DW.DigitalFilter_simContextBuf[149 - srcIdx] =
-      single_fre_rev_DW.DigitalFilter_states[srcIdx];
+  for (q0_0 = 0; q0_0 < 150; q0_0++) {
+    single_fre_rev_DW.DigitalFilter_simContextBuf[149 - q0_0] =
+      single_fre_rev_DW.DigitalFilter_states[q0_0];
   }
 
   /* Copy the initial part of input to ContextBuff_Dwork */
   memcpy(&single_fre_rev_DW.DigitalFilter_simContextBuf[150], &rtb_Gain[0], 80U *
          sizeof(real32_T));
-  for (srcIdx = 0; srcIdx < 80; srcIdx++) {
+  for (q0_0 = 0; q0_0 < 80; q0_0++) {
     acc = 0.0F;
-    for (n = 0; n < 151; n++) {
-      acc += single_fre_rev_DW.DigitalFilter_simContextBuf[srcIdx + n] *
-        single_fre_rev_DW.DigitalFilter_simRevCoeff[n];
+    for (q0 = 0; q0 < 151; q0++) {
+      acc += single_fre_rev_DW.DigitalFilter_simContextBuf[q0_0 + q0] *
+        single_fre_rev_DW.DigitalFilter_simRevCoeff[q0];
     }
 
     /* store output sample */
-    rtb_DigitalFilter[srcIdx] = acc;
+    rtb_DigitalFilter[q0_0] = acc;
   }
 
   /* Shift state buffer when input buffer is shorter than state buffer */
-  for (srcIdx = 69; srcIdx >= 0; srcIdx--) {
-    single_fre_rev_DW.DigitalFilter_states[srcIdx + 80] =
-      single_fre_rev_DW.DigitalFilter_states[srcIdx];
+  for (q0_0 = 69; q0_0 >= 0; q0_0--) {
+    single_fre_rev_DW.DigitalFilter_states[q0_0 + 80] =
+      single_fre_rev_DW.DigitalFilter_states[q0_0];
   }
 
   /* Reverse copy the states from input to States_Dwork */
-  for (srcIdx = 0; srcIdx < 80; srcIdx++) {
-    single_fre_rev_DW.DigitalFilter_states[79 - srcIdx] = rtb_Gain[srcIdx];
+  for (q0_0 = 0; q0_0 < 80; q0_0++) {
+    single_fre_rev_DW.DigitalFilter_states[79 - q0_0] = rtb_Gain[q0_0];
 
     /* Outport: '<Root>/out_f1' incorporates:
      *  DataTypeConversion: '<Root>/Data Type Conversion6'
      *  DiscreteFir: '<S2>/Digital Filter'
      */
-    single_fre_rev_Y.out_f1[srcIdx] = rtb_DigitalFilter[srcIdx];
+    single_fre_rev_Y.out_f1[q0_0] = rtb_DigitalFilter[q0_0];
   }
 
   /* End of DiscreteFir: '<S3>/Digital Filter' */
@@ -105,46 +123,46 @@ void single_fre_rev_step(void)
    *  Gain: '<S1>/Gain'
    */
   /* Reverse the coefficients */
-  for (srcIdx = 0; srcIdx < 151; srcIdx++) {
-    single_fre_rev_DW.DigitalFilter_simRevCoeff_i[150 - srcIdx] =
-      single_fre_rev_P.DigitalFilter_Coefficients_k[srcIdx];
+  for (q0_0 = 0; q0_0 < 151; q0_0++) {
+    single_fre_rev_DW.DigitalFilter_simRevCoeff_i[150 - q0_0] =
+      single_fre_rev_P.DigitalFilter_Coefficients_k[q0_0];
   }
 
   /* Reverse copy the states from States_Dwork to ContextBuff_Dwork */
-  for (srcIdx = 0; srcIdx < 150; srcIdx++) {
-    single_fre_rev_DW.DigitalFilter_simContextBuf_d[149 - srcIdx] =
-      single_fre_rev_DW.DigitalFilter_states_b[srcIdx];
+  for (q0_0 = 0; q0_0 < 150; q0_0++) {
+    single_fre_rev_DW.DigitalFilter_simContextBuf_d[149 - q0_0] =
+      single_fre_rev_DW.DigitalFilter_states_b[q0_0];
   }
 
   /* Copy the initial part of input to ContextBuff_Dwork */
   memcpy(&single_fre_rev_DW.DigitalFilter_simContextBuf_d[150], &rtb_Gain[0],
          80U * sizeof(real32_T));
-  for (srcIdx = 0; srcIdx < 80; srcIdx++) {
+  for (q0_0 = 0; q0_0 < 80; q0_0++) {
     acc = 0.0F;
-    for (n = 0; n < 151; n++) {
-      acc += single_fre_rev_DW.DigitalFilter_simContextBuf_d[srcIdx + n] *
-        single_fre_rev_DW.DigitalFilter_simRevCoeff_i[n];
+    for (q0 = 0; q0 < 151; q0++) {
+      acc += single_fre_rev_DW.DigitalFilter_simContextBuf_d[q0_0 + q0] *
+        single_fre_rev_DW.DigitalFilter_simRevCoeff_i[q0];
     }
 
     /* store output sample */
-    rtb_DigitalFilter[srcIdx] = acc;
+    rtb_DigitalFilter[q0_0] = acc;
   }
 
   /* Shift state buffer when input buffer is shorter than state buffer */
-  for (srcIdx = 69; srcIdx >= 0; srcIdx--) {
-    single_fre_rev_DW.DigitalFilter_states_b[srcIdx + 80] =
-      single_fre_rev_DW.DigitalFilter_states_b[srcIdx];
+  for (q0_0 = 69; q0_0 >= 0; q0_0--) {
+    single_fre_rev_DW.DigitalFilter_states_b[q0_0 + 80] =
+      single_fre_rev_DW.DigitalFilter_states_b[q0_0];
   }
 
   /* Reverse copy the states from input to States_Dwork */
-  for (srcIdx = 0; srcIdx < 80; srcIdx++) {
-    single_fre_rev_DW.DigitalFilter_states_b[79 - srcIdx] = rtb_Gain[srcIdx];
+  for (q0_0 = 0; q0_0 < 80; q0_0++) {
+    single_fre_rev_DW.DigitalFilter_states_b[79 - q0_0] = rtb_Gain[q0_0];
 
     /* Outport: '<Root>/out_f2' incorporates:
      *  DataTypeConversion: '<Root>/Data Type Conversion7'
      *  DiscreteFir: '<S2>/Digital Filter'
      */
-    single_fre_rev_Y.out_f2[srcIdx] = rtb_DigitalFilter[srcIdx];
+    single_fre_rev_Y.out_f2[q0_0] = rtb_DigitalFilter[q0_0];
   }
 
   /* End of DiscreteFir: '<S2>/Digital Filter' */

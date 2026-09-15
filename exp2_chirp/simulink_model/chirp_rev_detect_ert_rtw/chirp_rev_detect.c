@@ -7,9 +7,9 @@
  *
  * Code generated for Simulink model 'chirp_rev_detect'.
  *
- * Model version                  : 12.1
+ * Model version                  : 12.2
  * Simulink Coder version         : 25.2 (R2025b) 28-Jul-2025
- * C/C++ source code generated on : Fri Jun 26 16:20:47 2026
+ * C/C++ source code generated on : Tue Sep 15 12:30:03 2026
  *
  * Target selection: ert.tlc
  * Embedded hardware selection: ARM Compatible->ARM Cortex-A (64-bit)
@@ -167,8 +167,8 @@ void chirp_rev_detect_step1(void)      /* Sample time: [0.1s, 0.0s] */
   real_T LFM_re;
   real_T LFM_re_tmp;
   real_T xtmp;
-  int32_T f;
-  int32_T n;
+  int32_T q0;
+  int32_T q1;
   int32_T rtb_y2_e;
   real32_T rtb_y2_dm[800];
   real32_T rtb_y_g[800];
@@ -963,14 +963,31 @@ void chirp_rev_detect_step1(void)      /* Sample time: [0.1s, 0.0s] */
    *  Delay: '<Root>/Delay1'
    */
   chirp_rev_d_MATLABFunction2(chirp_rev_detect_DW.Delay1_DSTATE, rtb_y_g);
-  for (f = 0; f < 800; f++) {
+  for (rtb_y2_e = 0; rtb_y2_e < 800; rtb_y2_e++) {
+    /* Sum: '<S12>/Matrix Sum' incorporates:
+     *  Inport: '<Root>/AudioIn'
+     */
+    q0 = chirp_rev_detect_U.AudioIn[rtb_y2_e];
+    q1 = chirp_rev_detect_U.AudioIn[rtb_y2_e + 800];
+    if ((q0 < 0) && (q1 < MIN_int32_T - q0)) {
+      q0 = MIN_int32_T;
+    } else if ((q0 > 0) && (q1 > MAX_int32_T - q0)) {
+      q0 = MAX_int32_T;
+    } else {
+      q0 += q1;
+    }
+
+    if (q0 > 32767) {
+      q0 = 32767;
+    } else if (q0 < -32768) {
+      q0 = -32768;
+    }
+
     /* Gain: '<S12>/Gain' incorporates:
      *  DataTypeConversion: '<S12>/ 1'
-     *  Inport: '<Root>/AudioIn'
      *  Sum: '<S12>/Matrix Sum'
      */
-    rtb_y_j2[f] = (real32_T)(int16_T)(chirp_rev_detect_U.AudioIn[f + 800] +
-      chirp_rev_detect_U.AudioIn[f]) * chirp_rev_detect_P.Gain_Gain;
+    rtb_y_j2[rtb_y2_e] = chirp_rev_detect_P.Gain_Gain * (real32_T)(int16_T)q0;
   }
 
   /* DiscreteFir: '<S13>/Digital Filter' */
@@ -991,9 +1008,9 @@ void chirp_rev_detect_step1(void)      /* Sample time: [0.1s, 0.0s] */
          150U * sizeof(real32_T));
   for (rtb_y2_e = 0; rtb_y2_e < 150; rtb_y2_e++) {
     max1 = 0.0F;
-    for (n = 0; n < 151; n++) {
-      max1 += chirp_rev_detect_DW.DigitalFilter_simContextBuf[rtb_y2_e + n] *
-        chirp_rev_detect_DW.DigitalFilter_simRevCoeff[n];
+    for (q0 = 0; q0 < 151; q0++) {
+      max1 += chirp_rev_detect_DW.DigitalFilter_simContextBuf[rtb_y2_e + q0] *
+        chirp_rev_detect_DW.DigitalFilter_simRevCoeff[q0];
     }
 
     /* store output sample */
@@ -1002,9 +1019,9 @@ void chirp_rev_detect_step1(void)      /* Sample time: [0.1s, 0.0s] */
 
   for (rtb_y2_e = 0; rtb_y2_e < 650; rtb_y2_e++) {
     max1 = 0.0F;
-    for (n = 0; n < 151; n++) {
-      max1 += rtb_y_j2[rtb_y2_e + n] *
-        chirp_rev_detect_DW.DigitalFilter_simRevCoeff[n];
+    for (q0 = 0; q0 < 151; q0++) {
+      max1 += rtb_y_j2[rtb_y2_e + q0] *
+        chirp_rev_detect_DW.DigitalFilter_simRevCoeff[q0];
     }
 
     /* store output sample */
@@ -1040,9 +1057,9 @@ void chirp_rev_detect_step1(void)      /* Sample time: [0.1s, 0.0s] */
          &chirp_rev_detect_B.DigitalFilter[0], 100U * sizeof(real32_T));
   for (rtb_y2_e = 0; rtb_y2_e < 100; rtb_y2_e++) {
     max1 = 0.0F;
-    for (n = 0; n < 101; n++) {
-      max1 += chirp_rev_detect_DW.DigitalFilter_simContextBuf_k[rtb_y2_e + n] *
-        chirp_rev_detect_DW.DigitalFilter_simRevCoeff_m[n];
+    for (q0 = 0; q0 < 101; q0++) {
+      max1 += chirp_rev_detect_DW.DigitalFilter_simContextBuf_k[rtb_y2_e + q0] *
+        chirp_rev_detect_DW.DigitalFilter_simRevCoeff_m[q0];
     }
 
     /* store output sample */
@@ -1051,9 +1068,9 @@ void chirp_rev_detect_step1(void)      /* Sample time: [0.1s, 0.0s] */
 
   for (rtb_y2_e = 0; rtb_y2_e < 700; rtb_y2_e++) {
     max1 = 0.0F;
-    for (n = 0; n < 101; n++) {
-      max1 += chirp_rev_detect_B.DigitalFilter[rtb_y2_e + n] *
-        chirp_rev_detect_DW.DigitalFilter_simRevCoeff_m[n];
+    for (q0 = 0; q0 < 101; q0++) {
+      max1 += chirp_rev_detect_B.DigitalFilter[rtb_y2_e + q0] *
+        chirp_rev_detect_DW.DigitalFilter_simRevCoeff_m[q0];
     }
 
     /* store output sample */
@@ -1098,8 +1115,8 @@ void chirp_rev_detect_step1(void)      /* Sample time: [0.1s, 0.0s] */
     &chirp_rev_detect_B.sf_MATLABFunction3);
 
   /* Sum: '<Root>/Add' */
-  for (f = 0; f < 800; f++) {
-    rtb_y_g[f] += rtb_y_j2[f];
+  for (q1 = 0; q1 < 800; q1++) {
+    rtb_y_g[q1] += rtb_y_j2[q1];
   }
 
   /* End of Sum: '<Root>/Add' */
@@ -1138,8 +1155,8 @@ void chirp_rev_detect_step1(void)      /* Sample time: [0.1s, 0.0s] */
     &chirp_rev_detect_B.sf_MATLABFunction1);
 
   /* Sum: '<Root>/Add1' */
-  for (f = 0; f < 800; f++) {
-    rtb_y_j2[f] += rtb_y2_dm[f];
+  for (q1 = 0; q1 < 800; q1++) {
+    rtb_y_j2[q1] += rtb_y2_dm[q1];
   }
 
   /* End of Sum: '<Root>/Add1' */
@@ -1152,35 +1169,35 @@ void chirp_rev_detect_step1(void)      /* Sample time: [0.1s, 0.0s] */
   if (chirp_rev_detect_DW.position > 0.0) {
     if (chirp_rev_detect_DW.position - 50.0 > chirp_rev_detect_DW.position +
         50.0) {
-      n = 0;
+      q0 = 0;
       rtb_y2_e = 0;
     } else {
-      n = (int32_T)(chirp_rev_detect_DW.position - 50.0) - 1;
+      q0 = (int32_T)(chirp_rev_detect_DW.position - 50.0) - 1;
       rtb_y2_e = (int32_T)(chirp_rev_detect_DW.position + 50.0);
     }
 
-    f = rtb_y2_e - n;
-    varargin_1_size = f;
-    f = (uint16_T)f;
-    for (rtb_y2_e = 0; rtb_y2_e < f; rtb_y2_e++) {
-      rtb_y2_dm[rtb_y2_e] = (real32_T)fabs(rtb_y_g[n + rtb_y2_e]);
+    q1 = rtb_y2_e - q0;
+    varargin_1_size = q1;
+    q1 = (uint16_T)q1;
+    for (rtb_y2_e = 0; rtb_y2_e < q1; rtb_y2_e++) {
+      rtb_y2_dm[rtb_y2_e] = (real32_T)fabs(rtb_y_g[q0 + rtb_y2_e]);
     }
 
     max1 = chirp_rev_detect_maximum(rtb_y2_dm, &varargin_1_size);
     if (chirp_rev_detect_DW.position - 50.0 > chirp_rev_detect_DW.position +
         50.0) {
       rtb_y2_e = 0;
-      n = 0;
+      q0 = 0;
     } else {
       rtb_y2_e = (int32_T)(chirp_rev_detect_DW.position - 50.0) - 1;
-      n = (int32_T)(chirp_rev_detect_DW.position + 50.0);
+      q0 = (int32_T)(chirp_rev_detect_DW.position + 50.0);
     }
 
-    f = n - rtb_y2_e;
-    varargin_1_size = f;
-    f = (uint16_T)f;
-    for (n = 0; n < f; n++) {
-      rtb_y2_dm[n] = (real32_T)fabs(rtb_y_j2[rtb_y2_e + n]);
+    q1 = q0 - rtb_y2_e;
+    varargin_1_size = q1;
+    q1 = (uint16_T)q1;
+    for (q0 = 0; q0 < q1; q0++) {
+      rtb_y2_dm[q0] = (real32_T)fabs(rtb_y_j2[rtb_y2_e + q0]);
     }
 
     if (max1 > chirp_rev_detect_maximum(rtb_y2_dm, &varargin_1_size)) {
@@ -1230,9 +1247,9 @@ void chirp_rev_detect_step1(void)      /* Sample time: [0.1s, 0.0s] */
          100U * sizeof(real32_T));
   for (rtb_y2_e = 0; rtb_y2_e < 100; rtb_y2_e++) {
     max1 = 0.0F;
-    for (n = 0; n < 101; n++) {
-      max1 += chirp_rev_detect_DW.DigitalFilter_simContextBuf_j[rtb_y2_e + n] *
-        chirp_rev_detect_DW.DigitalFilter_simRevCoeff_o[n];
+    for (q0 = 0; q0 < 101; q0++) {
+      max1 += chirp_rev_detect_DW.DigitalFilter_simContextBuf_j[rtb_y2_e + q0] *
+        chirp_rev_detect_DW.DigitalFilter_simRevCoeff_o[q0];
     }
 
     /* store output sample */
@@ -1241,9 +1258,9 @@ void chirp_rev_detect_step1(void)      /* Sample time: [0.1s, 0.0s] */
 
   for (rtb_y2_e = 0; rtb_y2_e < 700; rtb_y2_e++) {
     max1 = 0.0F;
-    for (n = 0; n < 101; n++) {
-      max1 += rtb_y_g[rtb_y2_e + n] *
-        chirp_rev_detect_DW.DigitalFilter_simRevCoeff_o[n];
+    for (q0 = 0; q0 < 101; q0++) {
+      max1 += rtb_y_g[rtb_y2_e + q0] *
+        chirp_rev_detect_DW.DigitalFilter_simRevCoeff_o[q0];
     }
 
     /* store output sample */
@@ -1319,10 +1336,10 @@ void chirp_rev_detect_step1(void)      /* Sample time: [0.1s, 0.0s] */
    */
   memset(&chirp_rev_detect_B.temp[0], 0, 1599U * sizeof(real32_T));
   for (rtb_y2_e = 0; rtb_y2_e < 800; rtb_y2_e++) {
-    for (n = 0; n < 800; n++) {
-      f = rtb_y2_e + n;
-      chirp_rev_detect_B.temp[f] += (real32_T)chirp_rev_detect_B.y_a[rtb_y2_e] *
-        chirp_rev_detect_B.DigitalFilter_i[n];
+    for (q0 = 0; q0 < 800; q0++) {
+      q1 = rtb_y2_e + q0;
+      chirp_rev_detect_B.temp[q1] += (real32_T)chirp_rev_detect_B.y_a[rtb_y2_e] *
+        chirp_rev_detect_B.DigitalFilter_i[q0];
     }
   }
 
@@ -1372,34 +1389,35 @@ void chirp_rev_detect_step1(void)      /* Sample time: [0.1s, 0.0s] */
         rtb_y2_e = 1;
       } else {
         rtb_y2_e = 0;
-        n = 2;
+        q0 = 2;
         exitg1 = false;
-        while ((!exitg1) && (n < 801)) {
-          if (!rtIsNaNF(rtb_y_g[n - 1])) {
-            rtb_y2_e = n;
+        while ((!exitg1) && (q0 < 801)) {
+          if (!rtIsNaNF(rtb_y_g[q0 - 1])) {
+            rtb_y2_e = q0;
             exitg1 = true;
           } else {
-            n++;
+            q0++;
           }
         }
       }
 
       if (rtb_y2_e == 0) {
-        f = 1;
+        q1 = 1;
       } else {
         max1 = rtb_y_g[rtb_y2_e - 1];
-        f = rtb_y2_e;
-        for (n = rtb_y2_e + 1; n < 801; n++) {
-          rtb_y_d = rtb_y_g[n - 1];
+        q1 = rtb_y2_e;
+        for (q0 = rtb_y2_e + 1; q0 < 801; q0++) {
+          rtb_y_d = rtb_y_g[q0 - 1];
           if (max1 < rtb_y_d) {
             max1 = rtb_y_d;
-            f = n;
+            q1 = q0;
           }
         }
       }
 
-      if ((real32_T)fabs(chirp_rev_detect_DW.Delay8_DSTATE[f - 1]) > 30000.0F) {
-        chirp_rev_detect_DW.aa_h = f;
+      if ((real32_T)fabs(chirp_rev_detect_DW.Delay8_DSTATE[q1 - 1]) > 30000.0F)
+      {
+        chirp_rev_detect_DW.aa_h = q1;
         chirp_rev_detect_DW.flag = 2.0;
       }
     }
