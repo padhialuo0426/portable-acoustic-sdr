@@ -45,7 +45,14 @@ void model_step_frame(void)
 {
     /* 10Hz 任务：消费 AudioIn 一帧、产出 out_data（含 1 帧流水延迟） */
     chirp_rev_detect_step1();
-    /* 8000Hz 任务 ×800：逐样本处理本帧（经速率转换缓冲） */
+
+    /* 8000Hz 任务 ×800：逐样本处理本帧（经速率转换缓冲）。
+     *
+     * 注意：当前生成的 chirp_rev_detect_step0() 是空函数——算法全落在 TID1，
+     * 所以这里先 step1 后 step0 与顺序无关。若日后改模型让 TID0 真有内容，
+     * 要按 ERT 标准 rt_OneStep 的次序改成「基速率先跑」：
+     *     step0(); step1(); 再 799 次 step0();
+     * 否则 TID0 会比 TID1 晚一帧。 */
     for (int i = 0; i < MODEL_FRAME_SAMPLES; ++i)
         chirp_rev_detect_step0();
 }

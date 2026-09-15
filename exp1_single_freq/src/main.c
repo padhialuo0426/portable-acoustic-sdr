@@ -108,10 +108,10 @@ int main(int argc, char **argv)
     model_init();
     if (max_ticks)
         fprintf(stderr, "运行中：采集=%s  %dHz  %d声道  采集 %.1f 秒后自动停止\n",
-                cap_dev, MODEL_SAMPLE_RATE_HZ, MODEL_NUM_CHANNELS, dur_sec);
+                cap_dev, MODEL_SAMPLE_RATE_HZ, cap_ch, dur_sec);
     else
         fprintf(stderr, "运行中：采集=%s  %dHz  %d声道  按 Ctrl-C 停止\n",
-                cap_dev, MODEL_SAMPLE_RATE_HZ, MODEL_NUM_CHANNELS);
+                cap_dev, MODEL_SAMPLE_RATE_HZ, cap_ch);
     fprintf(stderr, "输出: %s, %s%s%s\n", mat_path[0], mat_path[1],
             raw_path ? ", 原始=" : "", raw_path ? raw_path : "");
 

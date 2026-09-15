@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 struct audio_dev {
     FILE    *fp;
@@ -39,8 +40,13 @@ int audio_capture_read(audio_dev_t *d, int16_t *buf, unsigned frames)
     if (!d || !d->fp) return -1;
     for (unsigned i = 0; i < frames; ++i) {
         int16_t mono;
-        if (fread(&mono, sizeof(int16_t), 1, d->fp) != 1)
-            return (int)i;                 /* EOF: 返回已读帧数(可能0) */
+        if (fread(&mono, sizeof(int16_t), 1, d->fp) != 1) {
+            /* EOF：把本帧剩余部分补零，避免上一帧残留数据被当成有效样本
+               喂进模型（主循环把任何 n>0 都当满帧处理）。 */
+            memset(&buf[i * d->channels], 0,
+                   (frames - i) * d->channels * sizeof(int16_t));
+            return (int)i;                 /* 返回已读帧数(可能 0 -> 主循环结束) */
+        }
         for (unsigned c = 0; c < d->channels; ++c)
             buf[i * d->channels + c] = mono; /* 单声道复制到各声道 */
     }

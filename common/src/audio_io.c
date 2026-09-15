@@ -44,13 +44,16 @@ static audio_dev_t *audio_open(snd_pcm_stream_t stream, const char *device,
     snd_pcm_hw_params_alloca(&hw);
     snd_pcm_hw_params_any(d->pcm, hw);
 
-    err  = snd_pcm_hw_params_set_access(d->pcm, hw,
-                                        SND_PCM_ACCESS_RW_INTERLEAVED);
-    err |= snd_pcm_hw_params_set_format(d->pcm, hw, SND_PCM_FORMAT_S16_LE);
-    err |= snd_pcm_hw_params_set_channels(d->pcm, hw, channels);
-
+    /* 逐项检查：ALSA 返回负 errno，用 |= 累积会把两个不同错误码或成一个
+       无意义的值，snd_strerror() 报出来的原因就对不上号了。 */
     unsigned rate = sample_rate;
-    err |= snd_pcm_hw_params_set_rate_near(d->pcm, hw, &rate, 0);
+    if ((err = snd_pcm_hw_params_set_access(d->pcm, hw,
+                                            SND_PCM_ACCESS_RW_INTERLEAVED)) >= 0 &&
+        (err = snd_pcm_hw_params_set_format(d->pcm, hw,
+                                            SND_PCM_FORMAT_S16_LE)) >= 0 &&
+        (err = snd_pcm_hw_params_set_channels(d->pcm, hw, channels)) >= 0) {
+        err = snd_pcm_hw_params_set_rate_near(d->pcm, hw, &rate, 0);
+    }
 
     /* 周期大小设为一帧的处理量，缓冲取 4 个周期，兼顾延迟与稳定 */
     snd_pcm_uframes_t period = frames;
