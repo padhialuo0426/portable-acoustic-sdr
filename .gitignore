@@ -1,6 +1,10 @@
 # 本地编辑器/工具配置
 .claude/
 
+# 操作系统产生的目录元数据（macOS Finder / Windows 资源管理器）
+.DS_Store
+Thumbs.db
+
 # 构建产物
 build/
 
