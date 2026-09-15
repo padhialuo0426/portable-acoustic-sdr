@@ -70,12 +70,17 @@ exp2_chirp/
 **模型改造**：
 - `ALSA Audio Capture` → **Inport `AudioIn`**（`int16[1600]` = 800样本×2声道，`[L0..799,R0..799]`）。
 - **仅保留** `toFileData5` → **Outport `out_data`**（标量判决值），删除其余 10 个未用 `To File`。
-- 配置 `ert.tlc` + `HardwareBoard=None` + `GenCodeOnly` + `MatFileLogging=off` + `Device Type=ARM Cortex-A (64-bit)`。
+- 配置 `ert.tlc` + `HardwareBoard=None` + `GenCodeOnly` + `MatFileLogging=off` + `Device Type=ARM Cortex-A (64-bit)` + `Toolchain=Automatically locate an installed toolchain`（见 [Q10](Q&A.md)）。
+- `Sum left & right channels and to single1/Matrix Sum` 勾选 **Saturate on integer overflow**：该块输出 `int16`，单声道采集时左右同源 ⇒ 求和为 `2x`，不饱和会回绕翻转（见 [Q5](Q&A.md)）。
 
 **多速率（与实验一的关键不同）**：模型双速率——`step0`@8000Hz（逐样本 chirp 相关）、
 `step1`@10Hz（每 800 样本一帧，读音频/出判决）。运行时
 `model_step_frame()` = `step1()` + `step0()×800`，由 ALSA 阻塞读（800帧@8000Hz=100ms）
 提供 10Hz 实时节拍。
+
+> 当前生成的 `chirp_rev_detect_step0()` 实际是**空函数**——算法全部落在 TID1，
+> 所以先 step1 后 step0 与顺序无关。若改模型让 TID0 真有内容，需按 ERT 标准
+> `rt_OneStep` 的次序改成「基速率先跑」（`src/model_glue.c` 里已留注释）。
 
 ### `baseband_images/` — 基带图片
 
@@ -141,6 +146,7 @@ set_param('chirp_rev_detect','SystemTargetFile','ert.tlc');
 set_param('chirp_rev_detect','HardwareBoard','None');
 set_param('chirp_rev_detect','GenCodeOnly','on');
 set_param('chirp_rev_detect','MatFileLogging','off');
+set_param('chirp_rev_detect','Toolchain','Automatically locate an installed toolchain');
 slbuild('chirp_rev_detect');     % 代码直接生成到 chirp_rev_detect_ert_rtw/
 ```
 
@@ -160,6 +166,7 @@ GUI 方式就是把上面 `set_param` + `slbuild` 用菜单点出来，产物完
    | Code Generation | Language | `C` |
    | Code Generation | ☑ Generate code only | 勾上 |
    | Code Generation → Interface | MAT-file logging | **取消勾选**（否则拖入 `rt_logging.c`，见 [Q&A](Q&A.md)） |
+   | Code Generation | Toolchain | `Automatically locate an installed toolchain`（模型里存的 `GNU GCC Embedded Linux` 在非 Linux 宿主上未注册，见 [Q&A](Q&A.md)） |
 
 4. **OK / Apply** 保存配置。
 5. 模型窗口按 **`Ctrl+B`**（或 **C CODE → Generate Code**）生成，结束后自动弹出

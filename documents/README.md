@@ -10,7 +10,7 @@
 | [`实验一_单频信号.md`](实验一_单频信号.md) | 实验一逐目录文件说明 + 用法 + 模型改造 |
 | [`实验二_chirp扩频.md`](实验二_chirp扩频.md) | 实验二逐目录文件说明 + 多速率/多图自适应 + 用法 |
 | [`手把手部署运行教程.md`](手把手部署运行教程.md) | **从零到实测的分步操作**：传代码上板 → 编译 → 声学实测 → 取回解码 |
-| [`Q&A.md`](Q&A.md) | **常见问题与坑点**（部署、声卡、跨板差异、MATLAB、git 等） |
+| [`Q&A.md`](Q&A.md) | **常见问题与坑点**（声卡设备、跨板差异、编译、MATLAB 代码生成） |
 
 > 项目根目录的 `README.md` 只做**简要介绍 + 许可声明**；细节都在本目录。
 
@@ -106,8 +106,10 @@ Fedora `sudo dnf install alsa-lib-devel`。交叉编译：`make CC=aarch64-linux
 
 `.slx` 与生成的 C 代码（`simulink_model/*_ert_rtw/*.c/.h`）都已入库，**运行端不需要 MATLAB**。
 只有当你要改算法时才需要在 MATLAB 里重新生成：配置 `ert.tlc` + `HardwareBoard=None`
-+ `GenCodeOnly` + 关 MAT 日志，`slbuild` 直接覆盖 `simulink_model/*_ert_rtw/`，再 `make` 即可。
-Device Type 已设为 `ARM Cortex-A (64-bit)`。详细步骤见各实验文档；踩坑见 [Q&A](Q&A.md)。
++ `GenCodeOnly` + 关 MAT 日志 + `Toolchain` 设为自动定位，`slbuild` 直接覆盖
+`simulink_model/*_ert_rtw/`，再 `make` 即可。Device Type 已设为 `ARM Cortex-A (64-bit)`。
+**生成代码不需要宿主机装任何 C 编译器**（编译在板上做），MATLAB 提示找不到
+supported compiler 可以无视。详细步骤见各实验文档；踩坑见 [Q&A](Q&A.md)。
 
 ## 致谢与许可
 

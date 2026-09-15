@@ -66,6 +66,13 @@ done
 **解决**：适当降低宿主机播放音量与板上采集增益（`amixer -c <card> sset <控件> <百分比> cap`，
 控件名因设备而异，如某 USB 卡是 `Line Capture Volume`），让峰值在几千~一万、不顶满。
 
+> 补充：模型里"左右声道求和转 single"那一步的输出是 `int16`。它原先**没开饱和**，
+> 单声道采集时左右填同一路 ⇒ 求和等于 `2x`，峰值一过 16383 就**按位回绕、符号翻转**
+> （比削顶更恶劣的失真）。现已在两个模型的 `Matrix Sum` 上勾选
+> *Saturate on integer overflow*，超限时钳到 ±32767。实测在无噪声文件直喂下，
+> 回绕与饱和两版在满量程输入时 **BER 都是 0**（匹配滤波/带通把失真产物滤掉了），
+> 所以这条改动是**防御性的**——真实声学信道有噪声时才会体现出余量差别。
+
 ### Q6. 大图声学采集解不出（小图却没问题）
 
 **原因**：信号太长、采集时长 `-t` 不够，帧尾还没采到就停了。
@@ -104,32 +111,57 @@ Fedora `sudo dnf install alsa-lib-devel`。（运行时只需 `libasound2`，编
 
 ## 三、MATLAB / 模型生成
 
-### Q10. `To File` 块的坑：为什么改成 Outport + 自写 mat_sink？
+### Q10. `slbuild` 报 `Toolchain 'GNU GCC Embedded Linux' is not registered`
+
+**现象**（macOS / Windows 宿主上重新生成代码时）
+```
+BUILD-ERR: Toolchain 'GNU GCC Embedded Linux' is not registered.
+It must be in the Toolchain registry in order to be valid.
+```
+**原因**：`.slx` 里存着的 `Toolchain` 是原树莓派支持包留下的 **`GNU GCC Embedded Linux`**，
+这个 toolchain 只在装了对应支持包的 Linux 宿主上注册。关键在于——**即使
+`GenCodeOnly='on'`，`slbuild` 也会先校验 toolchain 再决定生成什么**，所以"我只生成代码
+不编译，应该不需要编译器"这个直觉在这里不成立；改 `GenerateMakefile='off'` 同样挡不住。
+
+**解决**：把 toolchain 换成自动定位（本仓库入库的 `.slx` 已经改好，这条留作说明）：
+```matlab
+set_param(mdl,'Toolchain','Automatically locate an installed toolchain');
+```
+之后 `slbuild` 会正常生成代码，只是额外打印一条
+`Unable to detect supported compiler` 的**警告**——**可以无视**：`GenCodeOnly` 下
+MATLAB 本来就不调用编译器，本工程的 C 代码是拿到板上用板子自己的 `gcc` 编的，
+**宿主机根本不需要装任何 C 编译器**（macOS 上不需要完整 Xcode，Windows 上不需要 MSVC）。
+
+> 实测：R2025b + macOS(仅 Command Line Tools)，`single_fre_rev` 9 s、
+> `chirp_rev_detect` 27 s 生成完成，产物与入库代码一致。
+
+### Q11. `To File` 块的坑：为什么改成 Outport + 自写 mat_sink？
 
 在 `ert.tlc` 下：`MatFileLogging=off` 时 `To File` 会被**块归约删掉**，整个 `step()`
 变空；`MatFileLogging=on` 又会拉入 `rt_logging.c`（牵 `matrix.h` 等 MEX 头，板上无法编译）。
 **解决**：把 `To File` 换成 **Outport**，输出在模型外由板级 `mat_sink.c`（手写 MAT-v4 写入器）落盘。
 
-### Q11. `matlab -batch` 跑完留下僵尸进程 / 卡住
+### Q12. `matlab -batch` 跑完留下僵尸进程 / 卡住
 
 **现象**：`-batch` 退出时 ServiceHost 常卡住，留下后台 shell。
 **解决**：批处理结束后 `pkill -9 -f "MATLAB.*-batch"` 清理。建议批处理脚本里把日志
 写文件、用后台跑，跑完显式清进程。
 
-### Q12. 高版本 MATLAB 的模型，能在低版本（如原工程 R2022a）打开吗？
+### Q13. 高版本 MATLAB 的模型，能在低版本（如原工程 R2022a）打开吗？
 
 **低→高安全**（向前兼容）；**高→低有风险**：用 `Simulink.exportToVersion` 导出到低版本
 可能丢信息、尤其 **Stateflow**（实验二有 15 个）。本工程统一用较高版本 MATLAB，不回退。
 
-### Q13. 改了模型怎么重新生成代码？
+### Q14. 改了模型怎么重新生成代码？
 
 见各实验文档"重新生成模型"，**脚本（`slbuild`）和 Simulink 界面（APPS→Embedded Coder→
 `Ctrl+B`）两种方式产物一致**，按习惯选。关键配置一样：`ert.tlc` + `HardwareBoard=None`
-+ `GenCodeOnly=on` + `MatFileLogging=off` + `Device Type=ARM Cortex-A (64-bit)`，
++ `GenCodeOnly=on` + `MatFileLogging=off` + `Device Type=ARM Cortex-A (64-bit)`
++ `Toolchain=Automatically locate an installed toolchain`（少这一条会报错，见 [Q10](#q10-slbuild-报-toolchain-gnu-gcc-embedded-linux-is-not-registered)），
 生成到 `simulink_model/*_ert_rtw/`，再 `make`。若 Inport/Outport 改了名，同步改
 `src/model_glue.c` 一处。
 
-### Q14. MATLAB 脚本中文注释乱码
+### Q15. MATLAB 脚本中文注释乱码
 
 **原因**：原工程脚本是 GBK/UTF-8 混编。**解决**：已统一转 UTF-8（R2025b 默认 UTF-8）。
 新增/改写脚本一律存 UTF-8。
@@ -138,7 +170,7 @@ Fedora `sudo dnf install alsa-lib-devel`。（运行时只需 `libasound2`，编
 
 ## 四、跨板排错方法论（重要）
 
-### Q15. 实采解不出码，怎么判断是"算法错"还是"采集错"？
+### Q16. 实采解不出码，怎么判断是"算法错"还是"采集错"？
 
 **分层隔离**，逐步缩小范围：
 
