@@ -1,0 +1,430 @@
+function gui()
+%GUI  实验二 · 线性调频(chirp)扩频通信 —— 一键声学实测界面
+%
+%   用法：cd 到本文件所在目录(exp2_chirp/host)后直接运行 gui
+%
+%   把「手把手部署运行教程」第 4 节的动作串成一次点击：
+%     板上启动 chirp_rx 采集 → 宿主机扬声器播放 chirp 信号 → 等采集窗口跑完
+%     → scp 取回 chirp5.mat → 帧同步/硬判决/算 BER → 显示还原点阵
+%
+%   为什么不需要"掐秒表"：板上程序从启动到真正开始采集的死区实测只有
+%   70~175ms，ssh 连接开销约 20ms；而帧同步是在整条判决流里扫 m 序列、
+%   不要求对齐——只要信号完整落在采集窗口内就能解。所以默认 1s 前导 +
+%   2s 尾部余量已经很宽裕，手动操作时那种"看到板子开始录就立刻放音"的
+%   紧张感在这里是不必要的。
+%
+%   注意：本界面是便利封装。教学正路仍是 bok_emit / bok_rev 两个脚本手动跑
+%   （见 documents/手把手部署运行教程.md）。为了让那两个脚本保持可独立通读，
+%   本文件自带了等价的组帧/解码逻辑，没有把它们重构成函数——**改帧结构时
+%   两边都要改**。
+
+    A.here = fileparts(mfilename('fullpath'));
+    if isempty(A.here), A.here = pwd; end
+    A.imgdir = fullfile(A.here, '..', 'baseband_images');
+    A.fs = 8000; A.T = 0.1; A.B = 200; A.fc = 1000; A.n = 800;
+    A.mseq  = [1 0 0 1 1 0 1 0 1 1 1 1 0 0 0];
+    A.GUARD = 5;
+
+    %% ------------------------- 界面骨架 -------------------------
+    fig = uifigure('Name','实验二 · chirp 扩频 —— 一键声学实测', ...
+                   'Position',[80 80 1020 660]);
+    root = uigridlayout(fig,[1 2]);
+    root.ColumnWidth = {340,'1x'};
+
+    gL = uigridlayout(uipanel(root,'Title','设置与操作'),[16 2]);
+    gL.RowHeight   = [repmat({26},1,10), repmat({34},1,5), {'1x'}];
+    gL.ColumnWidth = {100,'1x'};
+
+    lab = @(t) uilabel(gL,'Text',t,'HorizontalAlignment','right');
+
+    lab('ssh 主机');     A.host = uieditfield(gL,'text','Value','pi5');
+    lab('板上路径');     A.rdir = uieditfield(gL,'text','Value','~/portable-acoustic-sdr/exp2_chirp');
+    lab('ALSA 设备');    A.dev  = uieditfield(gL,'text','Value','plughw:2,0');
+    imgItems = listImages(A.imgdir);
+    lab('发送图片');     A.img  = uidropdown(gL,'Items',imgItems, ...
+                                             'Value',pickDefault(imgItems), ...
+                                             'ValueChangedFcn',@(~,~)refreshTiming());
+    lab('前导余量 (s)'); A.lead = uieditfield(gL,'numeric','Value',1,'Limits',[0 30], ...
+                                             'ValueChangedFcn',@(~,~)refreshTiming());
+    lab('尾部余量 (s)'); A.tail = uieditfield(gL,'numeric','Value',2,'Limits',[0 60], ...
+                                             'ValueChangedFcn',@(~,~)refreshTiming());
+    lab('播放幅度');     A.amp  = uieditfield(gL,'numeric','Value',0.8,'Limits',[0 1]);
+    [odevNames, A.odevIDs] = listOutputs();
+    lab('输出设备');     A.odev = uidropdown(gL,'Items',odevNames, ...
+                                             'Value',pickSpeaker(odevNames));
+    lab('信号时长');     A.durTxt = uilabel(gL,'Text','—');
+    lab('采集窗口');     A.capTxt = uilabel(gL,'Text','—');
+
+    A.btnCheck = mkButton(gL,'① 自检（ssh / 可执行 / 声卡）',@onCheck);
+    A.btnLevel = mkButton(gL,'② 电平校准（放测试音测 RMS）',@onLevel);
+    A.btnRun   = mkButton(gL,'③ 一键声学实测',@onRun);
+    A.btnDec   = mkButton(gL,'仅解码已取回的 chirp5.mat',@onDecodeOnly);
+    A.btnStop  = mkButton(gL,'中止板上采集',@onStop);
+
+    gR = uigridlayout(root,[2 1]); gR.RowHeight = {'1x',180};
+
+    pRes = uipanel(gR,'Title','结果');
+    gRes = uigridlayout(pRes,[2 2]); gRes.RowHeight = {28,'1x'};
+    A.berTxt = uilabel(gRes,'Text','BER: —','FontSize',16,'FontWeight','bold');
+    A.berTxt.Layout.Column = [1 2];
+    A.axTx = uiaxes(gRes); title(A.axTx,'发送点阵');  axis(A.axTx,'off');
+    A.axRx = uiaxes(gRes); title(A.axRx,'接收还原');  axis(A.axRx,'off');
+
+    A.log = uitextarea(uipanel(gR,'Title','日志'),'Editable','off','Value',cell(0,1));
+
+    refreshTiming();
+    logf('就绪。建议顺序：① 自检 → ② 电平校准 → ③ 一键实测。');
+    logf('放音在本机、录音在板子，不要自放自录。');
+
+    %% ------------------------- 回调 -------------------------
+
+    function onCheck(~,~)
+        setBusy(true);
+        try
+            logf('--- 自检 ---');
+            [st,out] = ssh('hostname');
+            if st ~= 0
+                logf('✗ ssh 连不上 %s：%s', A.host.Value, strtrim(out));
+                return
+            end
+            logf('✓ ssh 通，板子 hostname = %s', strtrim(out));
+
+            [st,~] = ssh(sprintf('test -x %s/build/chirp_rx', A.rdir.Value));
+            if st == 0
+                logf('✓ 板上已有可执行 build/chirp_rx');
+            else
+                logf('✗ 板上没找到 %s/build/chirp_rx', A.rdir.Value);
+                logf('  先按教程第 2 节传代码，再在板上 make（需 libasound2-dev）。');
+            end
+
+            [~,out] = ssh('arecord -l');
+            logf('--- 板上采集设备 (arecord -l) ---');
+            logf('%s', strtrim(out));
+            logf('把上面麦克风所在的 card 号填进「ALSA 设备」，形如 plughw:<card>,0。');
+        catch e
+            logf('✗ 自检出错：%s', e.message);
+        end
+        setBusy(false);
+    end
+
+    function onLevel(~,~)
+        setBusy(true);
+        try
+            logf('--- 电平校准：板上录 6s，本机放 4s 测试音 ---');
+            wav = '/tmp/pasdr_level.wav';
+            bgssh(sprintf('arecord -D %s -f S16_LE -r 8000 -c 1 -d 6 %s', A.dev.Value, wav));
+            pause(1);
+
+            [x,~,~,~,~] = buildWaveform();
+            nplay = min(numel(x), 4*A.fs);
+            playblocking(mkPlayer(x(1:nplay)*A.amp.Value));
+            logf('测试音播放完毕，等板上录音结束…');
+            waitRemoteDone('arecord', 12);
+
+            local = fullfile(tempdir,'pasdr_level.wav');
+            [st,out] = system(sprintf('scp -q %s:%s "%s"', A.host.Value, wav, local));
+            if st ~= 0, logf('✗ 取回录音失败：%s', strtrim(out)); return, end
+
+            y = audioread(local);
+            pk = max(abs(y))*32768;  rms_ = sqrt(mean(y.^2))*32768;
+            logf('RMS = %.0f    峰值 = %d', rms_, pk);
+            if pk < 300
+                logf('✗ 太弱：麦克风可能没接好，或本机音量太低（见 Q&A Q4）。');
+            elseif pk < 1500
+                logf('△ 偏低：建议调高本机播放音量或板上采集增益。');
+            elseif pk > 20000
+                logf('△ 偏高：有过载风险，建议调低（见 Q&A Q5）。');
+            else
+                logf('✓ 电平合适（峰值几千量级），可以做实测了。');
+            end
+            logf('板上调增益：amixer -c <card> sset <控件> <百分比> cap');
+        catch e
+            logf('✗ 电平校准出错：%s', e.message);
+        end
+        setBusy(false);
+    end
+
+    function onRun(~,~)
+        setBusy(true);
+        try
+            [x, info_all, code, NN, MM] = buildWaveform();
+            dur  = code * A.T;
+            tcap = ceil(A.lead.Value + dur + A.tail.Value);
+
+            logf('--- 一键实测 ---');
+            logf('图片 %s  %dx%d=%d 位  符号数=%d  时长=%.1fs  采集窗口 -t %d', ...
+                 A.img.Value, MM, NN, NN*MM, code, dur, tcap);
+
+            % 1) 板上启动采集（后台），旧数据先删掉避免看到上一次的结果
+            bgssh(sprintf('cd %s && rm -f chirp5.mat && ./build/chirp_rx -d %s -t %d', ...
+                          A.rdir.Value, A.dev.Value, tcap));
+            logf('板上 chirp_rx 已启动，等 %.1fs 前导…', A.lead.Value);
+            pause(A.lead.Value);
+
+            % 2) 本机放音（阻塞，确保放完再往下走）
+            logf('开始播放（%.1fs）…', dur);
+            playblocking(mkPlayer(x*A.amp.Value));
+            logf('播放结束，等板上采集窗口跑完…');
+
+            % 3) 等板上进程退出
+            if ~waitRemoteDone('chirp_rx', tcap + 10)
+                logf('△ 等待超时，仍尝试取回数据。');
+            end
+
+            % 4) 取回
+            localMat = fullfile(A.here,'chirp5.mat');
+            [st,out] = system(sprintf('scp -q %s:%s/chirp5.mat "%s"', ...
+                                      A.host.Value, A.rdir.Value, localMat));
+            if st ~= 0
+                logf('✗ scp 取回失败：%s', strtrim(out));
+                logf('  板上可能没产出 chirp5.mat（采集设备打不开？见 Q&A Q1/Q2）。');
+                return
+            end
+            logf('✓ 已取回 chirp5.mat -> host/');
+
+            % 5) 解码
+            doDecode(localMat, info_all, NN, MM);
+        catch e
+            logf('✗ 实测出错：%s', e.message);
+        end
+        setBusy(false);
+    end
+
+    function onDecodeOnly(~,~)
+        setBusy(true);
+        try
+            [~, info_all, ~, NN, MM] = buildWaveform();
+            doDecode(fullfile(A.here,'chirp5.mat'), info_all, NN, MM);
+        catch e
+            logf('✗ 解码出错：%s', e.message);
+        end
+        setBusy(false);
+    end
+
+    function onStop(~,~)
+        [~,~] = ssh('pkill -x chirp_rx; pkill -x arecord');
+        logf('已向板子发送中止信号。');
+    end
+
+    %% ------------------------- 干活的部分 -------------------------
+
+    function doDecode(matfile, info_all, NN, MM)
+        if ~isfile(matfile)
+            logf('✗ 找不到 %s，先做一次实测。', matfile); return
+        end
+        S = load(matfile);
+        if ~isfield(S,'toFileData5')
+            logf('✗ %s 里没有 toFileData5 变量。', matfile); return
+        end
+        xs = S.toFileData5(2,:);            % 第 1 行是时间，第 2 行是判决值
+        logf('判决流 %d 帧（%.1fs）', numel(xs), numel(xs)/10);
+        if ~deadStreamOK(all(xs == 0)), return, end
+
+        [ber, bmp, l1, l2, flag] = decodeStream(xs, info_all, NN, MM);
+        logf('帧同步：flag=%d  帧头=%d  帧尾=%d（相距 %d）', flag, l1, l2, l2-l1);
+
+        A.berTxt.Text = sprintf('BER = %d/%d = %.4f', round(ber*NN*MM), NN*MM, ber);
+        if ber == 0
+            A.berTxt.FontColor = [0 0.5 0];
+            logf('✓ BER = 0，实验二通过。');
+        else
+            A.berTxt.FontColor = [0.8 0 0];
+            logf('△ BER = %.4f，有误码。检查电平/环境噪声。', ber);
+        end
+
+        showBitmap(A.axTx, imread(fullfile(A.imgdir, A.img.Value)), '发送点阵');
+        showBitmap(A.axRx, bmp, '接收还原');
+    end
+
+    % 组帧 + BOK chirp 调制（与 bok_emit.m 等价，但不放音、不写 info_all.mat）
+    function [x, info_all, code, NN, MM] = buildWaveform()
+        imdata = imread(fullfile(A.imgdir, A.img.Value));
+        data = double(imdata);
+        [NN, MM] = size(data);              % NN=行(高)  MM=列(宽)
+        info_all = zeros(1, NN*MM);
+        for m = 1:MM                        % 列优先展开
+            for nn = 1:NN
+                info_all((m-1)*NN+nn) = data(nn,m);
+            end
+        end
+        L = NN*MM;
+        code = 50 + L + A.GUARD;
+        info = zeros(1, code);
+        info(1:10)        = 0;                          % 信号检测前导
+        info(11:20)       = [1 0 1 0 1 0 1 0 1 0];      % 交替段
+        info(21:35)       = A.mseq;                     % 帧头
+        info(36:35+L)     = info_all;                   % 图片信息
+        info(36+L:50+L)   = A.mseq;                     % 帧尾
+        % 其余为 GUARD 个 0：补偿接收 1 符号时延、防 EOF 截断
+
+        t = linspace(0, A.T, A.n);
+        k = A.B / A.T;
+        miu = ones(1, code); miu(info == 1) = -1;       % 码元0->上扫, 1->下扫
+        x = zeros(1, code*A.n);
+        for i = 1:code
+            x((i-1)*A.n+1 : i*A.n) = ...
+                real(exp(1i*(2*pi*A.fc*t + pi*miu(i)*k*t.^2)));
+        end
+    end
+
+    % 帧同步 + 硬判决（与 bok_rev.m 等价；另外把 flag=-1 的极性反转也试一遍）
+    function [ber, bmp, l1, l2, flag] = decodeStream(xs, info_all, NN, MM)
+        L = NN*MM;  gap = L + 15;
+        pm = [-1;1;1;-1;-1;1;-1;1;-1;-1;-1;-1;1;1;1];
+        best = [];
+        for fl = [1 -1]
+            loc = [];
+            for p = 1:numel(xs)-14
+                if xs(p:p+14)*fl*pm > sum(abs(xs(p:p+10))) && abs(xs(p)) == 1
+                    loc(end+1) = p; %#ok<AGROW>
+                end
+            end
+            for i = 1:numel(loc)-1
+                if any(loc(i+1:end) - loc(i) == gap)
+                    best = [fl, loc(i), loc(i)+gap];  break
+                end
+            end
+            if ~isempty(best), break, end
+        end
+        if isempty(best)
+            error(['未找到相距 %d 的帧头/帧尾 m 序列。可能原因：图片选错、' ...
+                   '采集时长不够、信号太弱或过载。'], gap);
+        end
+        flag = best(1);  l1 = best(2);  l2 = best(3);
+        dec = double(xs(l1+15 : l2-1) <= 0);    % >0 判为码元 0，否则为 1
+        if flag == -1, dec = 1 - dec; end
+        ber = sum(dec ~= info_all) / L;
+        bmp = reshape(dec, NN, MM);             % 列优先，与组帧时一致
+    end
+
+    %% ------------------------- 小工具 -------------------------
+
+    % 显式指定输出设备，不依赖系统默认输出——否则接了蓝牙耳机时声音会跑到
+    % 耳机里，板上麦克风一无所获（判决流全 0）。这是实测踩过的坑。
+    % 板上确实跑完了、文件也取回了，但内容是死的——这种情况要把原因说清楚，
+    % 否则只会抛一个含糊的"找不到帧头/峰值不对"，排查方向全错。
+    function ok = deadStreamOK(isDead)
+        ok = ~isDead;
+        if isDead
+            logf('✗ 板上采到的数据全为 0——麦克风没收到任何信号。按可能性排：');
+            logf('   1) 「输出设备」选错：接了蓝牙耳机时声音不走扬声器（当前选的是 %s）', A.odev.Value);
+            logf('   2) 本机音量过低或静音；');
+            logf('   3) 麦克风没接好 / 「ALSA 设备」card 号不对（见 Q&A Q2/Q4）。');
+            logf('   先点「② 电平校准」，看 RMS 是否随放音跳起来。');
+        end
+    end
+
+    function p = mkPlayer(y)
+        k = find(strcmp(A.odev.Items, A.odev.Value), 1);
+        if isempty(k) || isempty(A.odevIDs)
+            p = audioplayer(y, A.fs);
+        else
+            p = audioplayer(y, A.fs, 16, A.odevIDs(k));
+        end
+        if ~isempty(regexpi(A.odev.Value, 'airpod|headphone|headset|bluetooth|耳机', 'once'))
+            logf('△ 输出设备像是耳机：%s —— 声音不会经空气传到板上麦克风。', A.odev.Value);
+        end
+    end
+
+    function [st,out] = ssh(remoteCmd)
+        [st,out] = system(sprintf('ssh -o BatchMode=yes -o ConnectTimeout=8 %s "%s"', ...
+                                  A.host.Value, remoteCmd));
+    end
+
+    function bgssh(remoteCmd)
+        c = sprintf('ssh -o BatchMode=yes %s "%s"', A.host.Value, remoteCmd);
+        if ispc
+            system(sprintf('start /b %s > NUL 2>&1', c));
+        else
+            system(sprintf('%s > /dev/null 2>&1 &', c));
+        end
+    end
+
+    function ok = waitRemoteDone(procName, timeoutSec)
+        t0 = tic;  ok = false;
+        while toc(t0) < timeoutSec
+            % 必须用 -x（精确匹配进程名）：-f 会匹配到承载 pgrep 的那条
+            % ssh 命令行本身（里面就含进程名），导致永远判定为"还在跑"。
+            [~,out] = ssh(sprintf('pgrep -x %s >/dev/null && echo RUN || echo DONE', procName));
+            if contains(out,'DONE'), ok = true; return, end
+            pause(0.5);
+        end
+    end
+
+    function refreshTiming()
+        try
+            inf_ = imfinfo(fullfile(A.imgdir, A.img.Value));
+            L = inf_.Width * inf_.Height;
+            code = 50 + L + A.GUARD;
+            dur  = code * A.T;
+            A.durTxt.Text = sprintf('%.1f s（%d 符号 / %d 位）', dur, code, L);
+            A.capTxt.Text = sprintf('-t %d', ceil(A.lead.Value + dur + A.tail.Value));
+        catch
+            A.durTxt.Text = '—';  A.capTxt.Text = '—';
+        end
+    end
+
+    function setBusy(tf)
+        s = {'on','off'};  s = s{1+tf};
+        A.btnCheck.Enable = s;  A.btnLevel.Enable = s;
+        A.btnRun.Enable   = s;  A.btnDec.Enable   = s;
+        drawnow;
+    end
+
+    function logf(fmt, varargin)
+        msg = sprintf(fmt, varargin{:});
+        cur = A.log.Value;
+        if isscalar(cur) && isempty(strtrim(cur{1})), cur = cell(0,1); end
+        A.log.Value = [cur; strsplit(msg, newline)'];
+        scroll(A.log,'bottom');  drawnow;
+    end
+end
+
+%% ------------------------- 局部函数 -------------------------
+
+function [names, ids] = listOutputs()
+    names = {};  ids = [];
+    try
+        d = audiodevinfo;
+        for i = 1:numel(d.output)
+            names{end+1} = d.output(i).Name; %#ok<AGROW>
+            ids(end+1)   = d.output(i).ID;   %#ok<AGROW>
+        end
+    catch
+    end
+    if isempty(names), names = {'(系统默认)'}; ids = []; end
+end
+
+% 优先选内置扬声器：接了蓝牙耳机时默认输出会被抢走，而本实验必须走扬声器
+function v = pickSpeaker(names)
+    k = find(~cellfun(@isempty, regexpi(names, 'speaker|扬声器|built-?in|internal', 'once')), 1);
+    if isempty(k), k = 1; end
+    v = names{k};
+end
+
+function b = mkButton(parent, txt, cb)
+    b = uibutton(parent,'Text',txt,'ButtonPushedFcn',cb);
+    b.Layout.Column = [1 2];
+end
+
+% 默认选最短的 ren128b（约 18s），跑通链路最快；没有就用第一张
+function v = pickDefault(items)
+    k = find(strcmpi(items,'ren128b.bmp'), 1);
+    if isempty(k), k = 1; end
+    v = items{k};
+end
+
+function items = listImages(d)
+    L = dir(fullfile(d,'*.bmp'));
+    if isempty(L)
+        items = {'(baseband_images 下没有 bmp)'};
+    else
+        items = {L.name};
+    end
+end
+
+function showBitmap(ax, bw, ttl)
+    imagesc(ax, double(bw) > 0);
+    colormap(ax, flipud(gray(2)));       % 1 -> 黑，0 -> 白
+    axis(ax,'image');  axis(ax,'off');  title(ax, ttl);
+end
