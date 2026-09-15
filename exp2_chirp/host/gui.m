@@ -45,8 +45,16 @@ function gui()
     lab('密码');         A.pass = uieditfield(gL,'text','Value','', ...
                               'Placeholder','留空 = 密钥登录（推荐）', ...
                               'Tooltip','注意：MATLAB 编辑框不支持掩码，密码会明文显示');
-    lab('板上路径');     A.rdir = uieditfield(gL,'text','Value','~/portable-acoustic-sdr/exp2_chirp');
-    lab('ALSA 设备');    A.dev  = uieditfield(gL,'text','Value','plughw:2,0');
+    lab('板上路径');     A.rdir = uieditfield(gL,'text','Value','','Enable','off', ...
+                              'Placeholder','点「① 自检」后自动填入');
+    lab('ALSA 设备');
+    gAd = uigridlayout(gL,[1 2]); gAd.ColumnWidth = {'1x',30};
+    gAd.RowHeight = {'1x'}; gAd.Padding = [0 0 0 0]; gAd.ColumnSpacing = 4;
+    A.dev  = uidropdown(gAd,'Items',{'(点「① 自检」后枚举)'},'Enable','off');
+    A.btnAlsa = uibutton(gAd,'Text','⟳','Enable','off', ...
+             'Tooltip','重新枚举板上采集设备（换麦克风/重插 USB 后点一下）', ...
+             'ButtonPushedFcn',@(~,~)refreshAlsa());
+    A.devStrs = {};
     imgItems = listImages(A.imgdir);
     lab('发送图片');     A.img  = uidropdown(gL,'Items',imgItems, ...
                                              'Value',pickDefault(imgItems), ...
@@ -66,7 +74,7 @@ function gui()
     lab('信号时长');     A.durTxt = uilabel(gL,'Text','—');
     lab('采集窗口');     A.capTxt = uilabel(gL,'Text','—');
 
-    A.btnCheck = mkButton(gL,'① 自检（ssh / 可执行 / 声卡）',@onCheck);
+    A.btnCheck = mkButton(gL,'① 自检（连接 / 同步源码 / 枚举声卡）',@onCheck);
     A.btnLevel = mkButton(gL,'② 电平校准（放测试音测 RMS）',@onLevel);
     A.btnRun   = mkButton(gL,'③ 一键声学实测',@onRun);
     A.btnDec   = mkButton(gL,'仅解码已取回的 chirp5.mat',@onDecodeOnly);
@@ -112,18 +120,18 @@ function gui()
             end
             logf('✓ ssh 通，板子 hostname = %s', strtrim(out));
 
+            % 同步源码 -> 枚举采集设备 -> 看有没有编好的可执行
+            if ~deployFiles(), return, end
+            refreshAlsa();
+
             [st,~] = ssh(sprintf('test -x %s/build/chirp_rx', A.rdir.Value));
             if st == 0
-                logf('✓ 板上已有可执行 build/chirp_rx');
+                logf('✓ 板上已有可执行 build/chirp_rx，可以直接做实测。');
             else
-                logf('✗ 板上没找到 %s/build/chirp_rx', A.rdir.Value);
-                logf('  先按教程第 2 节传代码，再在板上 make（需 libasound2-dev）。');
+                logf('△ 板上还没编译出 build/chirp_rx。源码已经传好，到板上执行：');
+                logf('     ssh %s "cd %s && make clean && make"', tgt, A.rdir.Value);
+                logf('  编译需要 libasound2-dev（见 Q&A Q10）。这一步刻意保留手动，见 Q8。');
             end
-
-            [~,out] = ssh('arecord -l');
-            logf('--- 板上采集设备 (arecord -l) ---');
-            logf('%s', strtrim(out));
-            logf('把上面麦克风所在的 card 号填进「ALSA 设备」，形如 plughw:<card>,0。');
         catch e
             logf('✗ 自检出错：%s', e.message);
         end
@@ -137,9 +145,9 @@ function gui()
         guard = onCleanup(@() setBusy(false));
         try
             logf('--- 电平校准：板上录 6s，本机放 4s 测试音 ---');
-            if ~ensureConn(), return, end
+            if ~ready() || ~ensureConn(), return, end
             wav = '/tmp/pasdr_level.wav';
-            bgssh(sprintf('arecord -D %s -f S16_LE -r 8000 -c 1 -d 6 %s', A.dev.Value, wav));
+            bgssh(sprintf('arecord -D %s -f S16_LE -r 8000 -c 1 -d 6 %s', alsaDev(), wav));
             pause(1);
 
             [x,~,~,~,~] = buildWaveform();
@@ -182,13 +190,13 @@ function gui()
             tcap = ceil(A.lead.Value + dur + A.tail.Value);
 
             logf('--- 一键实测 ---');
-            if ~ensureConn(), return, end
+            if ~ready() || ~ensureConn(), return, end
             logf('图片 %s  %dx%d=%d 位  符号数=%d  时长=%.1fs  采集窗口 -t %d', ...
                  A.img.Value, MM, NN, NN*MM, code, dur, tcap);
 
             % 1) 板上启动采集（后台），旧数据先删掉避免看到上一次的结果
             bgssh(sprintf('cd %s && rm -f chirp5.mat && ./build/chirp_rx -d %s -t %d', ...
-                          A.rdir.Value, A.dev.Value, tcap));
+                          A.rdir.Value, alsaDev(), tcap));
             logf('板上 chirp_rx 已启动，等 %.1fs 前导…', A.lead.Value);
             pause(A.lead.Value);
 
@@ -402,6 +410,104 @@ function gui()
 
     % 开跑前先探一次连通。否则主机/密码填错时，会白放完整段音频、再慢慢
     % 等满超时才失败——用户等一分钟才知道是 IP 打错了。
+    % ---- 板上采集设备：ssh 过去 arecord -l 现场枚举 ----
+    function refreshAlsa()
+        if ~ensureConn(), return, end
+        [st,out] = ssh('arecord -l');
+        if st ~= 0, logf('✗ 枚举板上采集设备失败：%s', strtrim(out)); return, end
+        [nm, ds] = parseArecord(out);
+        if isempty(ds)
+            A.dev.Items = {'(板上没有采集设备)'};  A.dev.Enable = 'off';  A.devStrs = {};
+            logf('✗ 板上 arecord -l 没列出任何采集设备——麦克风没插好？（见 Q&A Q4）');
+            return
+        end
+        keep = alsaDev();                       % 尽量保住用户已选的那个
+        A.devStrs = ds;  A.dev.Items = nm;
+        A.dev.Enable = 'on';  A.btnAlsa.Enable = 'on';
+        k = find(strcmp(ds, keep), 1);
+        if isempty(k), k = pickCapture(nm); end
+        A.dev.Value = nm{k};
+        A.dev.Tooltip = strjoin(nm, newline);   % 下拉收起时名字会截断
+        logf('板上采集设备 %d 个：', numel(nm));
+        for i = 1:numel(nm), logf('    %s', nm{i}); end
+    end
+
+    % 下拉里显示的是带描述的长名字，真正要传给 -d/-D 的是 plughw:X,Y
+    function d = alsaDev()
+        d = '';
+        if isempty(A.devStrs), return, end
+        k = find(strcmp(A.dev.Items, A.dev.Value), 1);
+        if ~isempty(k) && k <= numel(A.devStrs), d = A.devStrs{k}; end
+    end
+
+    % ---- 把板上编译需要的源码送过去 ----
+    % 用 MATLAB 自带的 tar 打包，不依赖宿主机有 find/tar（教程第 2 节那条管线
+    % 在 Windows 上要 Git Bash 才有）。只挑 Makefile/.c/.h，与教程口径一致：
+    % .slx、基带图片、slprj 缓存都不上板。
+    function ok = deployFiles()
+        ok = false;
+        [repoRoot, expName] = fileparts(fileparts(A.here));
+        pats = { fullfile('common','include','*.h'), ...
+                 fullfile('common','src','*.c'), ...
+                 fullfile(expName,'Makefile'), ...
+                 fullfile(expName,'include','*.h'), ...
+                 fullfile(expName,'src','*.c'), ...
+                 fullfile(expName,'simulink_model','*_ert_rtw','*.c'), ...
+                 fullfile(expName,'simulink_model','*_ert_rtw','*.h') };
+        rel = {};
+        for i = 1:numel(pats)
+            L = dir(fullfile(repoRoot, pats{i}));
+            for k = 1:numel(L)
+                if L(k).isdir, continue, end
+                r = L(k).folder(numel(repoRoot)+2:end);     % 去掉 repoRoot 前缀
+                rel{end+1} = strrep(fullfile(r, L(k).name), '\', '/'); %#ok<AGROW>
+            end
+        end
+        if isempty(rel)
+            logf('✗ 本地没找到要上板的源码（Makefile/.c/.h），工程目录不完整？');
+            return
+        end
+
+        tgz = fullfile(tempdir, 'pasdr_deploy.tgz');
+        if isfile(tgz), delete(tgz); end
+        tar(tgz, rel, repoRoot);
+        logf('打包 %d 个文件（Makefile/.c/.h）上传…', numel(rel));
+
+        remoteRoot = '~/portable-acoustic-sdr';
+        [st,out] = scpTo(tgz, '/tmp/pasdr_deploy.tgz');
+        if st ~= 0, logf('✗ 上传失败：%s', strtrim(out)); return, end
+        % --exclude='._*'：macOS 的扩展属性会被 MATLAB 的 tar 打成 AppleDouble
+        % 条目，解包后变成一堆 ._xxx.c 垃圾文件。它们不会被编进去（GNU make 的
+        % wildcard 用 glob，* 不匹配点开头的文件），但没必要留在板上。
+        [st,out] = ssh(sprintf(['mkdir -p %s && tar xzf /tmp/pasdr_deploy.tgz -C %s ' ...
+                                '--exclude=''._*'' && rm -f /tmp/pasdr_deploy.tgz'], ...
+                               remoteRoot, remoteRoot));
+        if st ~= 0, logf('✗ 板上解包失败：%s', strtrim(out)); return, end
+
+        A.rdir.Value  = sprintf('%s/%s', remoteRoot, expName);
+        A.rdir.Enable = 'on';
+        logf('✓ 源码已同步到板上 %s', A.rdir.Value);
+        ok = true;
+    end
+
+    % 自检之前，板上路径和采集设备都是空的，直接跑必然失败——提前说清楚
+    function ok = ready()
+        ok = ~isempty(strtrim(A.rdir.Value)) && ~isempty(alsaDev());
+        if ~ok
+            logf('✗ 还没自检。先点「① 自检」——它会把源码同步到板上并枚举采集设备。');
+        end
+    end
+
+    function [st,out] = scpTo(localPath, remotePath)
+        [pre,tgt,opts,ok] = sshBase();
+        if ~ok, st = 255; out = 'sshpass 缺失'; return, end
+        [dstDir, nm, ext] = fileparts(localPath);
+        if isempty(dstDir), dstDir = pwd; end
+        oldDir = cd(dstDir);
+        restore = onCleanup(@() cd(oldDir));
+        [st,out] = system(sprintf('%sscp -q %s "%s" %s:%s', pre, opts, [nm ext], tgt, remotePath));
+    end
+
     function ok = ensureConn()
         [st,out] = ssh('true');
         ok = (st == 0);
@@ -500,6 +606,30 @@ function gui()
 end
 
 %% ------------------------- 局部函数 -------------------------
+
+% arecord -l 形如：
+%   card 2: K10 [KSS K10], device 0: USB Audio [USB Audio]
+% 解析成设备串 plughw:2,0 和带详细名称的显示串
+function [names, devs] = parseArecord(txt)
+    names = {};  devs = {};
+    lines = strsplit(txt, newline);
+    for i = 1:numel(lines)
+        tok = regexp(strtrim(lines{i}), ...
+            '^card\s+(\d+):\s*\S+\s*\[([^\]]*)\].*?device\s+(\d+):\s*(.*?)\s*\[', ...
+            'tokens', 'once');
+        if numel(tok) == 4
+            devs{end+1}  = sprintf('plughw:%s,%s', tok{1}, tok{3}); %#ok<AGROW>
+            names{end+1} = sprintf('plughw:%s,%s — %s (%s)', ...
+                                   tok{1}, tok{3}, strtrim(tok{2}), strtrim(tok{4})); %#ok<AGROW>
+        end
+    end
+end
+
+% 板上常同时有 HDMI 等无关采集口，USB 声卡才是麦克风，优先选它
+function k = pickCapture(names)
+    k = find(~cellfun(@isempty, regexpi(names,'usb','once')), 1);
+    if isempty(k), k = 1; end
+end
 
 function v = ternary(c, a, b)
     if c, v = a; else, v = b; end
