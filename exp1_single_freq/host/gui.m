@@ -25,8 +25,8 @@ function gui()
     root = uigridlayout(fig,[1 2]);
     root.ColumnWidth = {340,'1x'};
 
-    gL = uigridlayout(uipanel(root,'Title','设置与操作'),[18 2]);
-    gL.RowHeight   = [repmat({26},1,12), repmat({32},1,5), {'1x'}];
+    gL = uigridlayout(uipanel(root,'Title','设置与操作'),[19 2]);
+    gL.RowHeight   = [repmat({26},1,12), repmat({32},1,6), {'1x'}];
     gL.ColumnWidth = {100,'1x'};
     gL.RowSpacing  = 4;      % 默认 10 会把 17 个间隙累积成 170px，末尾按钮被挤出可视区
 
@@ -67,8 +67,9 @@ function gui()
     lab('采集窗口');     A.capTxt = uilabel(gL,'Text','—');
 
     A.btnCheck = mkButton(gL,'① 自检（连接 / 同步源码 / 枚举声卡）',@onCheck);
-    A.btnLevel = mkButton(gL,'② 电平校准（放测试音测 RMS）',@onLevel);
-    A.btnRun   = mkButton(gL,'③ 一键声学实测',@onRun);
+    A.btnBuild = mkButton(gL,'② 板上编译',@onBuild);
+    A.btnLevel = mkButton(gL,'③ 电平校准（放测试音测 RMS）',@onLevel);
+    A.btnRun   = mkButton(gL,'④ 一键声学实测',@onRun);
     A.btnAna   = mkButton(gL,'仅分析已取回的 single_f.mat',@onAnalyzeOnly);
     A.btnStop  = mkButton(gL,'中止板上采集',@onStop);
 
@@ -85,8 +86,8 @@ function gui()
     A.log = uitextarea(gLog,'Editable','off','Value',cell(0,1),'FontName','Menlo');
 
     refreshTiming();
-    logf('就绪。建议顺序：① 自检 → ② 电平校准 → ③ 一键实测。');
-    logf('放音在本机、录音在板子，不要自放自录。');
+    logf('就绪。顺序：① 自检 → ② 板上编译 → ③ 电平校准 → ④ 一键实测');
+    logf('放音在本机、录音在板子，不要自放自录');
 
     %% ------------------------- 回调 -------------------------
 
@@ -97,34 +98,53 @@ function gui()
         % 之后整个界面永久变灰按不动。
         guard = onCleanup(@() setBusy(false));
         try
-            logf('--- 自检 ---');
+            logf('--- ① 自检 ---');
             [~,tgt,~,~] = sshBase();
-            if isempty(A.pass.Value)
-                logf('连接 %s（密钥登录）', tgt);
-            else
-                logf('连接 %s（密码登录，sshpass %s）', tgt, ternary(hasSshpass(),'可用','缺失'));
-            end
             [st,out] = ssh('hostname');
             if st ~= 0
-                logf('✗ ssh 连不上 %s：%s', A.host.Value, strtrim(out));
+                logStep(sprintf('连接 %s', tgt), '✗', '%s', firstLine(out));
                 return
             end
-            logf('✓ ssh 通，板子 hostname = %s', strtrim(out));
+            logStep(sprintf('连接 %s', tgt), '✓', '%s', strtrim(out));
 
-            % 同步源码 -> 枚举采集设备 -> 看有没有编好的可执行
-            if ~deployFiles(), return, end
-            refreshAlsa();
+            if ~deployFiles(),  return, end
+            if ~refreshAlsa(),  return, end
 
             [st,~] = ssh(sprintf('test -x %s/build/sdr_rx', A.rdir.Value));
             if st == 0
-                logf('✓ 板上已有可执行 build/sdr_rx，可以直接做实测。');
+                logStep('板上可执行', '✓', '已就绪');
             else
-                logf('△ 板上还没编译出 build/sdr_rx。源码已经传好，到板上执行：');
-                logf('     ssh %s "cd %s && make clean && make"', tgt, A.rdir.Value);
-                logf('  编译需要 libasound2-dev（见 Q&A Q10）。这一步刻意保留手动，见 Q8。');
+                logStep('板上可执行', '△', '未编译，请点「② 板上编译」');
             end
         catch e
-            logf('✗ 自检出错：%s', e.message);
+            logStep('自检', '✗', '%s', firstLine(e.message));
+        end
+    end
+
+    function onBuild(~,~)
+        setBusy(true);
+        guard = onCleanup(@() setBusy(false));
+        try
+            logf('--- ② 板上编译 ---');
+            if ~ready() || ~ensureConn(), return, end
+            logStep('编译', '▶', '板上 gcc，稍候');
+            [~,out] = ssh(sprintf('cd %s && make clean >/dev/null 2>&1 && make 2>&1', ...
+                                  A.rdir.Value));
+            [st,~] = ssh(sprintf('test -x %s/build/sdr_rx', A.rdir.Value));
+            if st == 0
+                logStep('编译', '✓', '已生成 build/sdr_rx');
+                return
+            end
+            logStep('编译', '✗', '未生成可执行');
+            if contains(out, 'asoundlib.h') || contains(out, '-lasound')
+                logf('  板上缺 ALSA 开发库（见 Q&A Q10）');
+            end
+            tail_ = strsplit(strtrim(out), newline);
+            for i = max(1, numel(tail_)-4):numel(tail_)
+                logf('  %s', strtrim(tail_{i}));
+            end
+        catch e
+            logStep('板上编译', '✗', '%s', firstLine(e.message));
         end
     end
 
@@ -135,35 +155,34 @@ function gui()
         % 之后整个界面永久变灰按不动。
         guard = onCleanup(@() setBusy(false));
         try
-            logf('--- 电平校准：板上录 6s，本机放 4s 测试音 ---');
+            logf('--- ③ 电平校准 ---');
             if ~ready() || ~ensureConn(), return, end
             wav = '/tmp/pasdr_level.wav';
             bgssh(sprintf('arecord -D %s -f S16_LE -r 8000 -c 1 -d 6 %s', alsaDev(), wav));
             pause(1);
 
             playblocking(mkPlayer(makeTone(4)*A.amp.Value));
-            logf('测试音播放完毕，等板上录音结束…');
+            logStep('板上录音 6s / 本机放音 4s', '✓', '');
             waitRemoteDone('arecord', 12);
 
             local = fullfile(tempdir,'pasdr_level.wav');
             [st,out] = scpFrom(wav, local);
-            if st ~= 0, logf('✗ 取回录音失败：%s', strtrim(out)); return, end
+            if st ~= 0, logStep('取回录音', '✗', '%s', firstLine(out)); return, end
 
             y = audioread(local);
             pk = max(abs(y))*32768;  rms_ = sqrt(mean(y.^2))*32768;
-            logf('RMS = %.0f    峰值 = %d', rms_, pk);
+            lv = sprintf('RMS=%.0f 峰值=%.0f', rms_, pk);
             if pk < 300
-                logf('✗ 太弱：麦克风可能没接好，或本机音量太低（见 Q&A Q4）。');
+                logStep('电平', '✗', '%s 太弱，麦克风没接好或音量太低（见 Q&A Q4）', lv);
             elseif pk < 1500
-                logf('△ 偏低：建议调高本机播放音量或板上采集增益。');
+                logStep('电平', '△', '%s 偏低，调高本机音量或板上采集增益', lv);
             elseif pk > 20000
-                logf('△ 偏高：有过载风险，建议调低（见 Q&A Q5）。');
+                logStep('电平', '△', '%s 偏高，有过载风险（见 Q&A Q5）', lv);
             else
-                logf('✓ 电平合适（峰值几千量级），可以做实测了。');
+                logStep('电平', '✓', '%s 合适', lv);
             end
-            logf('板上调增益：amixer -c <card> sset <控件> <百分比> cap');
         catch e
-            logf('✗ 电平校准出错：%s', e.message);
+            logStep('电平校准', '✗', '%s', firstLine(e.message));
         end
     end
 
@@ -175,41 +194,41 @@ function gui()
         guard = onCleanup(@() setBusy(false));
         try
             tcap = ceil(A.lead.Value + A.dur.Value + A.tail.Value);
-            logf('--- 一键实测 ---');
+            logf('--- ④ 一键实测 ---');
             if ~ready() || ~ensureConn(), return, end
-            logf('单频 fc=%g Hz  发射 %.1fs  采集窗口 -t %d', ...
+            logf('单频 %g Hz  信号 %.1fs  采集窗口 %ds', ...
                  A.fc.Value, A.dur.Value, tcap);
 
             % 1) 板上启动采集（后台），旧数据先删掉
             bgssh(sprintf('cd %s && rm -f single_f.mat single_f2.mat && ./build/sdr_rx -d %s -t %d', ...
                           A.rdir.Value, alsaDev(), tcap));
-            logf('板上 sdr_rx 已启动，等 %.1fs 前导…', A.lead.Value);
+            logStep('板上采集', '✓', '已启动');
             pause(A.lead.Value);
 
             % 2) 本机放音（阻塞）
-            logf('开始播放（%.1fs）…', A.dur.Value);
+            logStep('本机放音', '▶', '%.1fs', A.dur.Value);
             playblocking(mkPlayer(makeTone(A.dur.Value)*A.amp.Value));
-            logf('播放结束，等板上采集窗口跑完…');
+            logStep('本机放音', '✓', '结束，等板上采集窗口跑完');
 
             % 3) 等板上进程退出
             if ~waitRemoteDone('sdr_rx', tcap + 10)
-                logf('△ 等待超时，仍尝试取回数据。');
+                logStep('等待采集', '△', '超时，仍尝试取回数据');
             end
 
             % 4) 取回
             localMat = fullfile(A.here,'single_f.mat');
             [st,out] = scpFrom(sprintf('%s/single_f.mat', A.rdir.Value), localMat);
             if st ~= 0
-                logf('✗ scp 取回失败：%s', strtrim(out));
-                logf('  板上可能没产出 single_f.mat（采集设备打不开？见 Q&A Q1/Q2）。');
+                logStep('取回数据', '✗', '%s', firstLine(out));
+                logf('  板上可能没产出 single_f.mat（采集设备打不开？见 Q&A Q1/Q2）');
                 return
             end
-            logf('✓ 已取回 single_f.mat -> host/');
+            logStep('取回数据', '✓', 'single_f.mat');
 
             % 5) 频谱分析
             doAnalyze(localMat);
         catch e
-            logf('✗ 实测出错：%s', e.message);
+            logStep('一键实测', '✗', '%s', firstLine(e.message));
         end
     end
 
@@ -222,7 +241,7 @@ function gui()
         try
             doAnalyze(fullfile(A.here,'single_f.mat'));
         catch e
-            logf('✗ 分析出错：%s', e.message);
+            logStep('分析', '✗', '%s', firstLine(e.message));
         end
     end
 
@@ -236,18 +255,17 @@ function gui()
     % 与 spectrum.m 等价：81×N 去掉时间行、逐列拼长向量、去直流、FFT 找正频峰
     function doAnalyze(matfile)
         if ~isfile(matfile)
-            logf('✗ 找不到 %s，先做一次实测。', matfile); return
+            logStep('分析', '✗', '本地没有 single_f.mat，先做一次实测'); return
         end
         S = load(matfile);
         if ~isfield(S,'toFileData')
-            logf('✗ %s 里没有 toFileData 变量。', matfile); return
+            logStep('分析', '✗', '文件里没有 toFileData 变量'); return
         end
         X = S.toFileData;
         if size(X,1) == 81, X = X(2:end,:); end     % 第 1 行是时间戳
         y = X(:);
         N = numel(y);
-        if N == 0, logf('✗ 数据为空。'); return, end
-        logf('样本数=%d  时长=%.2fs  录到的峰值=%.0f', N, N/A.fs, max(abs(y)));
+        if N == 0, logStep('分析', '✗', '数据为空'); return, end
         if ~deadStreamOK(max(abs(y)) < 1e-9), return, end
         y = y - mean(y);
 
@@ -273,11 +291,11 @@ function gui()
                                fpeak, A.fc.Value, err);
         if err <= 10
             A.pkTxt.FontColor = [0 0.5 0];
-            logf('✓ 峰值 %.1f Hz 落在设定频率附近，实验一通过。', fpeak);
+            logStep('频谱峰值', '✓', '%.1f Hz，实验一通过', fpeak);
         else
             A.pkTxt.FontColor = [0.8 0 0];
-            logf('△ 峰值 %.1f Hz 偏离设定 %g Hz。检查电平/环境噪声/设备采样率。', ...
-                 fpeak, A.fc.Value);
+            logStep('频谱峰值', '△', '%.1f Hz 偏离设定 %g Hz，检查电平/噪声/采样率', ...
+                    fpeak, A.fc.Value);
         end
     end
 
@@ -296,15 +314,9 @@ function gui()
     function ok = deadStreamOK(isDead)
         ok = ~isDead;
         if isDead
-            logf('✗ 板上采到的数据全为 0——麦克风没收到任何信号。按可能性排：');
-            logf('   1) 选中设备的音量太低。注意 macOS/Windows 都是**按设备分别记忆音量**的，');
-            logf('      系统音量滑块只控制"当前默认输出"。若默认输出是蓝牙耳机，而这里选的是');
-            logf('      %s，那么调系统音量调的是耳机、扬声器仍停在旧音量——', A.odev.Value);
-            logf('      声音确实从扬声器出来了，但小到麦克风收不到。');
-            logf('      解决：把系统输出临时切到该设备再调音量，或直接断开耳机。');
-            logf('   2) 「输出设备」选错（当前选的是 %s）；', A.odev.Value);
-            logf('   3) 麦克风没接好 / 「ALSA 设备」card 号不对（见 Q&A Q2/Q4）。');
-            logf('   先点「② 电平校准」，看 RMS 是否随放音跳起来——它就是用来定位这类问题的。');
+            logStep('数据检查', '✗', '板上采到的全是 0，麦克风没收到信号');
+            logf('  常见原因：选中输出设备的音量过低（系统音量只作用于默认输出）、');
+            logf('  输出设备选错、麦克风没接好。先用「③ 电平校准」看 RMS（见 Q&A Q9/Q4）');
         end
     end
 
@@ -316,7 +328,7 @@ function gui()
             p = audioplayer(y, A.fs, 16, A.odevIDs(k));
         end
         if ~isempty(regexpi(A.odev.Value, 'airpod|headphone|headset|bluetooth|耳机', 'once'))
-            logf('△ 输出设备像是耳机：%s —— 声音不会经空气传到板上麦克风。', A.odev.Value);
+            logStep('输出设备', '△', '像是耳机，声音不会经空气传到板上麦克风');
         end
     end
 
@@ -332,15 +344,11 @@ function gui()
             opts = '-o BatchMode=yes -o ConnectTimeout=8';
         else
             if ~hasSshpass()
-                logf('✗ 填了密码，但系统里没有 sshpass，无法用密码登录。');
+                logStep('密码登录', '✗', '本机没有 sshpass');
                 if ispc
-                    logf('  Windows 没有 sshpass（自带的只有 ssh/scp）。请清空密码框改用密钥登录：');
-                    logf('       ssh-keygen -t ed25519');
-                    logf('       type %%USERPROFILE%%\\.ssh\\id_ed25519.pub | ssh %s "mkdir -p .ssh && cat >> .ssh/authorized_keys"', tgt);
+                    logf('  Windows 没有 sshpass：请清空密码框改用密钥登录（见教程附录）');
                 else
-                    logf('  两条路：① 清空密码框，改用密钥登录（推荐）：');
-                    logf('       ssh-keygen -t ed25519 && ssh-copy-id %s', tgt);
-                    logf('  ② 安装 sshpass：macOS `brew install sshpass`，Debian `apt install sshpass`。');
+                    logf('  清空密码框改用密钥登录（推荐），或先安装 sshpass');
                 end
                 ok = false;  opts = '';  return
             end
@@ -361,14 +369,17 @@ function gui()
     % 开跑前先探一次连通。否则主机/密码填错时，会白放完整段音频、再慢慢
     % 等满超时才失败——用户等一分钟才知道是 IP 打错了。
     % ---- 板上采集设备：ssh 过去 arecord -l 现场枚举 ----
-    function refreshAlsa()
+    function ok = refreshAlsa()
+        ok = false;
         if ~ensureConn(), return, end
         [st,out] = ssh('arecord -l');
-        if st ~= 0, logf('✗ 枚举板上采集设备失败：%s', strtrim(out)); return, end
+        if st ~= 0
+            logStep('枚举采集设备', '✗', '%s', firstLine(out)); return
+        end
         [nm, ds] = parseArecord(out);
         if isempty(ds)
             A.dev.Items = {'(板上没有采集设备)'};  A.dev.Enable = 'off';  A.devStrs = {};
-            logf('✗ 板上 arecord -l 没列出任何采集设备——麦克风没插好？（见 Q&A Q4）');
+            logStep('枚举采集设备', '✗', '板上一个都没有，麦克风没插好？（见 Q&A Q4）');
             return
         end
         keep = alsaDev();                       % 尽量保住用户已选的那个
@@ -378,8 +389,8 @@ function gui()
         if isempty(k), k = pickCapture(nm); end
         A.dev.Value = nm{k};
         A.dev.Tooltip = strjoin(nm, newline);   % 下拉收起时名字会截断
-        logf('板上采集设备 %d 个：', numel(nm));
-        for i = 1:numel(nm), logf('    %s', nm{i}); end
+        logStep('枚举采集设备', '✓', '%d 个，选用 %s', numel(nm), nm{k});
+        ok = true;
     end
 
     % 下拉里显示的是带描述的长名字，真正要传给 -d/-D 的是 plughw:X,Y
@@ -414,29 +425,29 @@ function gui()
             end
         end
         if isempty(rel)
-            logf('✗ 本地没找到要上板的源码（Makefile/.c/.h），工程目录不完整？');
+            logStep('同步源码', '✗', '本地没找到 Makefile/.c/.h');
             return
         end
 
         tgz = fullfile(tempdir, 'pasdr_deploy.tgz');
         if isfile(tgz), delete(tgz); end
         tar(tgz, rel, repoRoot);
-        logf('打包 %d 个文件（Makefile/.c/.h）上传…', numel(rel));
+
 
         remoteRoot = '~/portable-acoustic-sdr';
         [st,out] = scpTo(tgz, '/tmp/pasdr_deploy.tgz');
-        if st ~= 0, logf('✗ 上传失败：%s', strtrim(out)); return, end
+        if st ~= 0, logStep('同步源码', '✗', '上传失败：%s', firstLine(out)); return, end
         % --exclude='._*'：macOS 的扩展属性会被 MATLAB 的 tar 打成 AppleDouble
         % 条目，解包后变成一堆 ._xxx.c 垃圾文件。它们不会被编进去（GNU make 的
         % wildcard 用 glob，* 不匹配点开头的文件），但没必要留在板上。
         [st,out] = ssh(sprintf(['mkdir -p %s && tar xzf /tmp/pasdr_deploy.tgz -C %s ' ...
                                 '--exclude=''._*'' && rm -f /tmp/pasdr_deploy.tgz'], ...
                                remoteRoot, remoteRoot));
-        if st ~= 0, logf('✗ 板上解包失败：%s', strtrim(out)); return, end
+        if st ~= 0, logStep('同步源码', '✗', '板上解包失败：%s', firstLine(out)); return, end
 
         A.rdir.Value  = sprintf('%s/%s', remoteRoot, expName);
         A.rdir.Enable = 'on';
-        logf('✓ 源码已同步到板上 %s', A.rdir.Value);
+        logStep('同步源码', '✓', '%d 个文件 -> %s', numel(rel), A.rdir.Value);
         ok = true;
     end
 
@@ -444,7 +455,7 @@ function gui()
     function ok = ready()
         ok = ~isempty(strtrim(A.rdir.Value)) && ~isempty(alsaDev());
         if ~ok
-            logf('✗ 还没自检。先点「① 自检」——它会把源码同步到板上并枚举采集设备。');
+            logStep('前置检查', '✗', '还没自检，先点「① 自检」');
         end
     end
 
@@ -463,10 +474,8 @@ function gui()
         ok = (st == 0);
         if ~ok
             [~,tgt,~,~] = sshBase();
-            logf('✗ 连不上 %s，已中止。', tgt);
-            o = strtrim(out);
-            if ~isempty(o), logf('  %s', o); end
-            logf('  先点「① 自检」确认主机/用户名/密码，或改用密钥登录。');
+            logStep(sprintf('连接 %s', tgt), '✗', '%s', firstLine(out));
+            logf('  已中止。先用「① 自检」确认主机/用户名/密码');
         end
     end
 
@@ -509,7 +518,7 @@ function gui()
             % ssh 命令行本身（里面就含进程名），导致永远判定为"还在跑"。
             [st,out] = ssh(sprintf('pgrep -x %s >/dev/null && echo RUN || echo DONE', procName));
             if st ~= 0
-                logf('△ 轮询板上进程时 ssh 失败，不再空转等待。');
+                logStep('等待采集', '△', 'ssh 断了，不再空转等待');
                 return          % 连接已经断了，继续轮询只是把超时耗满
             end
             if contains(out,'DONE'), ok = true; return, end
@@ -533,9 +542,19 @@ function gui()
 
     function setBusy(tf)
         s = {'on','off'};  s = s{1+tf};
-        A.btnCheck.Enable = s;  A.btnLevel.Enable = s;
-        A.btnRun.Enable   = s;  A.btnAna.Enable   = s;
+        A.btnCheck.Enable = s;  A.btnBuild.Enable = s;
+        A.btnLevel.Enable = s;  A.btnRun.Enable   = s;
+        A.btnAna.Enable   = s;
         drawnow;
+    end
+
+    % 日志只报流程和状态，不打印可执行命令——命令该出现在文档里，不该刷屏
+    function logStep(label, mark, fmt, varargin)
+        if nargin < 3 || isempty(fmt)
+            logf('%s … %s', label, mark);
+        else
+            logf('%s … %s %s', label, mark, sprintf(fmt, varargin{:}));
+        end
     end
 
     function logf(fmt, varargin)
@@ -573,8 +592,12 @@ function k = pickCapture(names)
     if isempty(k), k = 1; end
 end
 
-function v = ternary(c, a, b)
-    if c, v = a; else, v = b; end
+% ssh/scp 的报错常有好几行，日志里只留最有信息量的第一行
+function s = firstLine(txt)
+    t = strtrim(txt);
+    if isempty(t), s = ''; return, end
+    parts = strsplit(t, newline);
+    s = strtrim(parts{1});
 end
 
 function ok = hasSshpass()
