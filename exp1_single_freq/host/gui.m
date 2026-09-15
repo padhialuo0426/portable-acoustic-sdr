@@ -18,6 +18,7 @@ function gui()
     A.here = fileparts(mfilename('fullpath'));
     if isempty(A.here), A.here = pwd; end
     A.jses = [];  A.jkey = '';      % 复用的 JSch 会话
+    A.cancelled = false; A.player = []; A.job = ''; A.busy = false;
     A.fs = 8000;
 
     %% ------------------------- 界面骨架 -------------------------
@@ -38,14 +39,14 @@ function gui()
     lab('主机/IP');      A.host = uieditfield(gL,'text','Value','', ...
                               'Placeholder','如 192.168.3.82', ...
                               'Tooltip','IP 或可解析主机名；不支持 ~/.ssh/config 里的别名', ...
-                              'ValueChangedFcn',@(~,~)jdisconnect());
+                              'ValueChangedFcn',@(~,~)credentialsChanged());
     lab('用户名');       A.user = uieditfield(gL,'text','Value','', ...
                               'Placeholder','板子登录名，如 pi', ...
-                              'ValueChangedFcn',@(~,~)jdisconnect());
+                              'ValueChangedFcn',@(~,~)credentialsChanged());
     lab('密码');         A.pass = uieditfield(gL,'text','Value','', ...
                               'Placeholder','板子登录密码', ...
                               'Tooltip','注意：MATLAB 编辑框不支持掩码，密码会明文显示', ...
-                              'ValueChangedFcn',@(~,~)jdisconnect());
+                              'ValueChangedFcn',@(~,~)credentialsChanged());
     lab('板上路径');     A.rdir = uieditfield(gL,'text','Value','','Enable','off', ...
                               'Placeholder','点「① 自检」后自动填入');
     lab('ALSA 设备');
@@ -112,6 +113,7 @@ function gui()
             % 失败…），若不清空，上一次成功时填的路径会继续显示，而它可能早已
             % 不成立了。自检的语义应当是"显示的一切都是刚刚验证过的"。
             A.rdir.Value = '';  A.rdir.Enable = 'off';
+            clearCapture();
             tgt = jTarget();
             [st,out] = ssh('hostname');
             if st ~= 0
@@ -138,7 +140,7 @@ function gui()
             A.rdir.Enable = 'on';
             logStep('板上源码', '✓', '%s', guess);
 
-            [st,~] = ssh(sprintf('test -x %s/build/sdr_rx', A.rdir.Value));
+            [st,~] = ssh(sprintf('test -x %s/build/sdr_rx', remoteDir()));
             if st == 0
                 logStep('板上可执行', '✓', '已就绪');
             else
@@ -159,14 +161,14 @@ function gui()
             % make clean 不能省：PC 与板子时钟可能有偏差，新 .c 的时间戳不一定
             % 比旧 .o 新，make 会误判"已是最新"而不重编，跑的还是旧逻辑
             logStep('编译', '▶', '板上 gcc，稍候');
-            [~,out] = ssh(sprintf('cd %s && make clean >/dev/null 2>&1 && make 2>&1', ...
-                                  A.rdir.Value));
-            [st,~] = ssh(sprintf('test -x %s/build/sdr_rx', A.rdir.Value));
-            if st == 0
+            [buildStatus,out] = ssh(sprintf('cd %s && make clean && make', ...
+                                  remoteDir()));
+            [st,~] = ssh(sprintf('test -x %s/build/sdr_rx', remoteDir()));
+            if buildStatus == 0 && st == 0
                 logStep('编译', '✓', '已生成 build/sdr_rx');
                 return
             end
-            logStep('编译', '✗', '未生成可执行');
+            logStep('编译', '✗', '编译失败（退出码 %d）', buildStatus);
             if contains(out, 'asoundlib.h') || contains(out, '-lasound')
                 logf('  板上缺 ALSA 开发库（见 Q&A Q10）');
             end
@@ -187,14 +189,15 @@ function gui()
         guard = onCleanup(@() setBusy(false));
         try
             logf('--- ③ 电平校准 ---');
-            if ~ready() || ~ensureConn(), return, end
-            wav = '/tmp/pasdr_level.wav';
-            bgssh(sprintf('arecord -D %s -f S16_LE -r 8000 -c 1 -d 6 %s', alsaDev(), wav));
-            pause(1);
+            if ~ensureConn(), return, end
+            if isempty(alsaDev()), logf('先点「① 自检」枚举采集设备。'); return, end
+            wav = ['/tmp/pasdr_level_' char(java.util.UUID.randomUUID()) '.wav'];
+            bgssh(sprintf('arecord -D %s -f S16_LE -r 8000 -c 1 -d 6 %s', shellQuote(alsaDev()), shellQuote(wav)));
+            pause(1); checkCancelled();
 
-            playblocking(mkPlayer(makeTone(4)*A.amp.Value));
+            playAudio(makeTone(4)*A.amp.Value);
             logStep('板上录音 6s / 本机放音 4s', '✓', '');
-            waitRemoteDone('arecord', 12);
+            if ~waitRemoteDone(12), return, end
 
             local = fullfile(tempdir,'pasdr_level.wav');
             [st,out] = scpFrom(wav, local);
@@ -226,25 +229,23 @@ function gui()
         try
             tcap = ceil(A.lead.Value + A.dur.Value + A.tail.Value);
             logf('--- ④ 一键实测 ---');
-            if ~ready() || ~ensureConn(), return, end
+            if ~ensureConn() || ~ready(), return, end
             logf('单频 %g Hz  信号 %.1fs  采集窗口 %ds', ...
                  A.fc.Value, A.dur.Value, tcap);
 
             % 1) 板上启动采集（后台），旧数据先删掉
             bgssh(sprintf('cd %s && rm -f single_f.mat single_f2.mat && ./build/sdr_rx -d %s -t %d', ...
-                          A.rdir.Value, alsaDev(), tcap));
+                          remoteDir(), shellQuote(alsaDev()), tcap));
             logStep('板上采集', '✓', '已启动');
-            pause(A.lead.Value);
+            pause(A.lead.Value); checkCancelled();
 
             % 2) 本机放音（阻塞）
             logStep('本机放音', '▶', '%.1fs', A.dur.Value);
-            playblocking(mkPlayer(makeTone(A.dur.Value)*A.amp.Value));
+            playAudio(makeTone(A.dur.Value)*A.amp.Value);
             logStep('本机放音', '✓', '结束，等板上采集窗口跑完');
 
             % 3) 等板上进程退出
-            if ~waitRemoteDone('sdr_rx', tcap + 10)
-                logStep('等待采集', '△', '超时，仍尝试取回数据');
-            end
+            if ~waitRemoteDone(tcap + 10), return, end
 
             % 4) 取回
             localMat = fullfile(A.here,'single_f.mat');
@@ -277,8 +278,13 @@ function gui()
     end
 
     function onStop(~,~)
-        [~,~] = ssh('pkill -x sdr_rx; pkill -x arecord');
-        logf('已向板子发送中止信号。');
+        A.cancelled = true;
+        if ~isempty(A.player), stop(A.player); end
+        if isempty(A.job)
+            logf('没有本界面启动的采集任务。'); return
+        end
+        stopJob();
+        logf('已请求中止本次采集，本地流程也已取消。');
     end
 
     %% ------------------------- 干活的部分 -------------------------
@@ -294,14 +300,17 @@ function gui()
         end
         X = S.toFileData;
         if size(X,1) == 81, X = X(2:end,:); end     % 第 1 行是时间戳
+        if ~isnumeric(X) || ~isreal(X) || any(~isfinite(X(:)))
+            error('采样数据必须为有限实数。');
+        end
         y = X(:);
         N = numel(y);
-        if N == 0, logStep('分析', '✗', '数据为空'); return, end
+        if N < 3, logStep('分析', '✗', '采样点不足'); return, end
         if ~deadStreamOK(max(abs(y)) < 1e-9), return, end
         y = y - mean(y);
 
         Y  = fft(y);
-        f  = (-N/2:N/2-1)*(A.fs/N);
+        f  = (-floor(N/2):ceil(N/2)-1)*(A.fs/N);
         Ys = fftshift(abs(Y))/N;
         pos = f > 0;  fpos = f(pos);  Ypos = Ys(pos);
         [pk, idx] = max(Ypos);
@@ -373,9 +382,10 @@ function gui()
     % ---- 板上采集设备：连过去跑 arecord -l 现场枚举 ----
     function ok = refreshAlsa()
         ok = false;
-        if ~ensureConn(), return, end
-        [st,out] = ssh('arecord -l');
+        if ~ensureConn(), clearCapture(); return, end
+        [st,out] = ssh('LC_ALL=C arecord -l');
         if st ~= 0
+            clearCapture();
             logStep('枚举采集设备', '✗', '%s', firstLine(out)); return
         end
         [nm, ds] = parseArecord(out);
@@ -406,7 +416,7 @@ function gui()
     % ---- 把板上编译需要的源码送过去 ----
     % 用 MATLAB 自带的 tar 打包，不依赖宿主机有 find/tar（教程第 2 节那条管线
     % 在 Windows 上要 Git Bash 才有）。只挑 Makefile/.c/.h，与教程口径一致：
-    % .slx、基带图片、slprj 缓存都不上板。
+    % .slx、基带图片不上板；slprj 中编译需要的 _sharedutils 源码也要上传。
     function ok = deployFiles()
         ok = false;
         [repoRoot, expName] = fileparts(fileparts(A.here));
@@ -416,7 +426,9 @@ function gui()
                  fullfile(expName,'include','*.h'), ...
                  fullfile(expName,'src','*.c'), ...
                  fullfile(expName,'simulink_model','*_ert_rtw','*.c'), ...
-                 fullfile(expName,'simulink_model','*_ert_rtw','*.h') };
+                 fullfile(expName,'simulink_model','*_ert_rtw','*.h'), ...
+                 fullfile(expName,'simulink_model','slprj','ert','_sharedutils','*.c'), ...
+                 fullfile(expName,'simulink_model','slprj','ert','_sharedutils','*.h') };
         rel = {};
         for i = 1:numel(pats)
             L = dir(fullfile(repoRoot, pats{i}));
@@ -431,7 +443,8 @@ function gui()
             return
         end
 
-        tgz = fullfile(tempdir, 'pasdr_deploy.tgz');
+        tgz = [tempname '.tgz'];
+        tarCleanup = onCleanup(@() deleteIfPresent(tgz));
         if isfile(tgz), delete(tgz); end
         tar(tgz, rel, repoRoot);
 
@@ -440,16 +453,17 @@ function gui()
         % 先删掉板上旧的生成代码目录：tar 解包只覆盖/新增、不删除，若这次重新
         % 生成让某个 .c 改了名或消失，残留的"孤儿 .c"会被 Makefile 的 *.c 通配
         % 编进去而报错（教程 5.1 提醒过的坑）。手写源码目录不会有这问题，不动。
-        ssh(sprintf('rm -rf %s/%s/simulink_model', remoteRoot, expName));
 
-        [st,out] = scpTo(tgz, '/tmp/pasdr_deploy.tgz');
+        remoteTar = ['/tmp/pasdr_deploy_' char(java.util.UUID.randomUUID()) '.tgz'];
+        [st,out] = scpTo(tgz, remoteTar);
         if st ~= 0, logStep('同步源码', '✗', '上传失败：%s', firstLine(out)); return, end
         % --exclude='._*'：macOS 的扩展属性会被 MATLAB 的 tar 打成 AppleDouble
         % 条目，解包后变成一堆 ._xxx.c 垃圾文件。它们不会被编进去（GNU make 的
         % wildcard 用 glob，* 不匹配点开头的文件），但没必要留在板上。
-        [st,out] = ssh(sprintf(['mkdir -p %s && tar xzf /tmp/pasdr_deploy.tgz -C %s ' ...
-                                '--exclude=''._*'' && rm -f /tmp/pasdr_deploy.tgz'], ...
-                               remoteRoot, remoteRoot));
+        [st,out] = ssh(sprintf(['tar tzf %s >/dev/null && mkdir -p %s && rm -rf %s/%s/simulink_model && tar xzf %s -C %s ' ...
+                                '--exclude=''._*'' && rm -f %s'], ...
+                               shellQuote(remoteTar), remoteRoot, remoteRoot, expName, ...
+                               shellQuote(remoteTar), remoteRoot, shellQuote(remoteTar)));
         if st ~= 0, logStep('同步源码', '✗', '板上解包失败：%s', firstLine(out)); return, end
 
         A.rdir.Value  = sprintf('%s/%s', remoteRoot, expName);
@@ -468,7 +482,7 @@ function gui()
             logStep('前置检查', '✗', '板上没有源码，先点「② 同步源码到板上并编译」');
             return
         end
-        [st,~] = ssh(sprintf('test -x %s/build/sdr_rx', A.rdir.Value));
+        [st,~] = ssh(sprintf('test -x %s/build/sdr_rx', remoteDir()));
         ok = (st == 0);
         if ~ok
             logStep('前置检查', '✗', '板上没有可执行，先点「② 同步源码到板上并编译」');
@@ -514,7 +528,7 @@ function gui()
         jdisconnect();
         j = javaObject('com.jcraft.jsch.JSch');
         cfg = java.util.Properties();
-        cfg.put('StrictHostKeyChecking','no');   % 与命令行分支的 accept-new 对齐
+        cfg.put('StrictHostKeyChecking','no');   % 实验环境沿用不校验主机密钥的策略（并非 accept-new）
         [u, h] = jUserHost();
         [ip, note] = resolveHost(h);
         if ~isempty(note), logf('  主机 %s %s', h, note); end
@@ -522,7 +536,12 @@ function gui()
         s.setPassword(A.pass.Value);
         s.setConfig(cfg);
         s.setTimeout(60000);      % 板上 make 期间输出有间隔，别让读超时打断
-        s.connect(10000);
+        try
+            s.connect(10000);
+        catch e
+            s.disconnect();
+            rethrow(e);
+        end
         A.jses = s;  A.jkey = key;
     end
 
@@ -575,46 +594,48 @@ function gui()
         end
     end
 
-    % 远端 stdout+stderr 合流后逐行读；不碰 byte[] 编组，省掉一类跨版本坑
+    % 用字节流保存完整输出；轮询通道结束，避免 readLine 阻塞 UI。
     function [st, out] = jexec(cmd)
-        st = 255;          % 出错时 catch 会填 out
+        st = 255;
         try
-            s  = jsession();
+            s = jsession();
             ch = s.openChannel('exec');
-            % 分组重定向：直接追加 2>&1 只作用于 && 链的最后一环，
-            % 中间命令（如 tar/mkdir）的报错会漏掉
+            closer = onCleanup(@() ch.disconnect());
             ch.setCommand(sprintf('{ %s ; } 2>&1', cmd));
-            in = ch.getInputStream();
-            ch.connect();
-            rd = java.io.BufferedReader(java.io.InputStreamReader(in, 'UTF-8'));
-            L = {};
-            while true
-                l = rd.readLine();
-                if isempty(l), break, end
-                L{end+1} = char(l); %#ok<AGROW>
+            bytes = java.io.ByteArrayOutputStream();
+            ch.setOutputStream(bytes);
+            ch.connect(10000);
+            deadline = tic;
+            while ~ch.isClosed()
+                if toc(deadline) > 180
+                    error('远端命令超过 180 秒未结束。');
+                end
+                pause(0.02);
             end
-            while ~ch.isClosed(), pause(0.01); end
             st = double(ch.getExitStatus());
-            ch.disconnect();
-            out = strjoin(L, newline);
+            out = char(bytes.toString('UTF-8'));
         catch e
             out = jerr(e);
         end
     end
 
-    % 后台跑：channel 一断远端进程会收到 SIGHUP，必须 setsid+nohup 脱离
+    % 每次任务独立目录，保存真实退出码/日志，并只中止自己的进程组。
     function jexecDetached(cmd)
-        try
-            s  = jsession();
-            ch = s.openChannel('exec');
-            % 本界面生成的命令里不含单引号，直接用单引号包住最可靠
-            ch.setCommand(sprintf('nohup setsid sh -c ''%s'' >/dev/null 2>&1 </dev/null &', cmd));
-            ch.connect();
-            pause(0.2);
-            ch.disconnect();
-        catch e
-            logStep('后台启动', '✗', '%s', jerr(e));
-        end
+        checkCancelled();
+        [st,out] = ssh('mktemp -d /tmp/pasdr_job.XXXXXXXX');
+        if st ~= 0, error('%s', out); end
+        A.job = strtrim(out);
+        q = shellQuote(A.job);
+        body = sprintf('echo $$ > %s/pid; ( %s ); rc=$?; echo "$rc" > %s/status', q, cmd, q);
+        [st,out] = ssh(sprintf('nohup setsid sh -c %s >%s/log 2>&1 </dev/null & launcher=$!', shellQuote(body), q));
+        if st ~= 0, error('后台启动失败：%s', out); end
+        % 等到远端包装进程确实启动，不能只等固定 0.2s 就声称成功。
+        [st,out] = ssh(sprintf(['i=0; while [ ! -s %s/pid ] && [ "$i" -lt 50 ]; ' ...
+            'do sleep 0.1; i=$((i+1)); done; test -s %s/pid'], q, q));
+        if st ~= 0, error('后台进程未启动：%s', out); end
+        pause(0.2); checkCancelled();
+        [done,ok] = jobStatus();
+        if done && ~ok, error('板上采集启动失败，见上方日志。'); end
     end
 
     % SFTP 的初始目录就是家目录，但它不展开 ~，去掉前缀用相对路径即可
@@ -626,8 +647,9 @@ function gui()
         st = 0;  out = '';
         try
             s  = jsession();
-            sf = s.openChannel('sftp');  sf.connect();
+            sf = s.openChannel('sftp');
             closer = onCleanup(@() sf.disconnect());
+            sf.connect(10000);
             sf.put(localPath, jPath(remotePath));
         catch e
             st = 1;  out = jerr(e);
@@ -638,9 +660,14 @@ function gui()
         st = 0;  out = '';
         try
             s  = jsession();
-            sf = s.openChannel('sftp');  sf.connect();
+            sf = s.openChannel('sftp');
             closer = onCleanup(@() sf.disconnect());
-            sf.get(jPath(remotePath), localPath);
+            sf.connect(10000);
+            partial = [tempname(fileparts(localPath)) '.part'];
+            cleanup = onCleanup(@() deleteIfPresent(partial));
+            sf.get(jPath(remotePath), partial);
+            [ok,msg] = movefile(partial, localPath, 'f');
+            if ~ok, error('%s', msg); end
         catch e
             st = 1;  out = jerr(e);
         end
@@ -650,6 +677,25 @@ function gui()
         [st,out] = jexec(remoteCmd);
     end
 
+    % macOS 的「本地网络」隐私限制只挡局域网、不挡公网，且授权按**责任进程**
+    % 归属：从 Finder/Dock 启动时责任进程就是 MATLAB 自己，从终端启动时是终端，
+    % 这正是"终端启动能连、点图标启动连不上"的原因。环境变量 __CFBundleIdentifier
+    % 记的就是这个责任进程，可直接用来判断当前 MATLAB 是怎么起来的。
+    % 实测依据：点图标启动的 MATLAB 里，局域网 TCP 失败而 webread 公网正常。
+    function s = netHint()
+        if ~ismac
+            s = '——检查板子地址、本机路由和防火墙';  return
+        end
+        if strcmp(getenv('__CFBundleIdentifier'), 'com.mathworks.matlab')
+            s = ['——这个 MATLAB 是从 Finder/Dock 启动的，几乎可以确定是 macOS' ...
+                 '「本地网络」隐私限制：它只挡局域网、不挡公网。最省事的绕法是' ...
+                 '在终端执行 matlab -desktop 启动 MATLAB（授权按责任进程归属，' ...
+                 '终端启动即可继承）。详见 Q&A Q11'];
+        else
+            s = '——检查板子地址是否填对、板子与本机是否同网段';
+        end
+    end
+
     % Java 异常带一大段栈，日志里只要人看得懂的那句
     function s = jerr(e)
         s = firstLine(regexprep(e.message, '^Java exception occurred:\s*', ''));
@@ -657,14 +703,17 @@ function gui()
         m = e.message;
         if strcmpi(s, 'Auth fail') || strcmpi(s, 'Auth cancel')
             s = '认证失败——用户名或密码不对';
-        elseif contains(m, 'NoRouteToHostException')
-            s = '网络不可达——「主机/IP」填的地址路由不过去，建议直接填局域网 IP';
         elseif contains(m, 'UnknownHostException')
             s = '主机名解析不了——建议直接填局域网 IP';
-        elseif contains(m, 'ConnectException')
-            s = '连接被拒——IP 对吗？板子上 sshd 开着吗？';
-        elseif contains(m, 'SocketTimeoutException') || contains(m, 'timeout')
-            s = '连接超时——IP 对吗？板子和本机在同一网段吗？';
+        elseif contains(lower(m), 'connection refused')
+            % 这条要排在通用的 ConnectException 前面：地址是通的，只是没人听 22 端口
+            s = '连接被拒——地址通了但 22 端口没响应，板子上 sshd 开着吗？';
+        elseif contains(m, 'NoRouteToHostException') || contains(lower(m), 'no route to host') ...
+                || contains(lower(m), 'host is down') || contains(m, 'ConnectException') ...
+                || contains(m, 'SocketException') || contains(m, 'SocketTimeoutException') ...
+                || contains(lower(m), 'timed out') || contains(lower(m), 'timeout')
+            % 以上都是"TCP 层就没连上"，对用户是同一件事，合并处理
+            s = ['连不上板子（还没走到密码认证这一步）' netHint()];
         end
         if isempty(s), s = firstLine(e.message); end
     end
@@ -679,22 +728,75 @@ function gui()
         jexecDetached(remoteCmd);
     end
 
-    function ok = waitRemoteDone(procName, timeoutSec)
-        t0 = tic;  ok = false;
+    function ok = waitRemoteDone(timeoutSec)
+        t0 = tic; ok = false;
         while toc(t0) < timeoutSec
-            % 必须用 -x（精确匹配进程名）：-f 会匹配到承载 pgrep 的那条
-            % ssh 命令行本身（里面就含进程名），导致永远判定为"还在跑"。
-            [st,out] = ssh(sprintf('pgrep -x %s >/dev/null && echo RUN || echo DONE', procName));
-            if st ~= 0
-                logStep('等待采集', '△', 'ssh 断了，不再空转等待');
-                return          % 连接已经断了，继续轮询只是把超时耗满
-            end
-            if contains(out,'DONE'), ok = true; return, end
-            pause(0.5);
+            checkCancelled();
+            [done,ok] = jobStatus();
+            if done, return, end
+            pause(0.2);
+        end
+        stopJob();
+        logStep('等待采集', '✗', '超时，已中止本次任务，不读取未完成数据');
+    end
+
+    function [done,ok] = jobStatus()
+        q = shellQuote(A.job);
+        [st,out] = ssh(sprintf('if test -f %s/status; then cat %s/status; else echo RUN; fi', q, q));
+        if st ~= 0, error('查询采集状态失败：%s', out); end
+        done = ~strcmp(strtrim(out), 'RUN');
+        ok = done && strcmp(strtrim(out), '0');
+        if done && ~ok
+            [~,details] = ssh(sprintf('tail -n 8 %s/log', q));
+            logStep('板上采集', '✗', '退出码 %s：%s', strtrim(out), strtrim(details));
+        end
+    end
+
+    function stopJob()
+        if isempty(A.job), return, end
+        q = shellQuote(A.job);
+        [st,out] = ssh(sprintf(['if test -s %s/pid && ! test -f %s/status; then ' ...
+            'pid=$(cat %s/pid); case "$pid" in ""|*[!0-9]*) exit 1;; esac; ' ...
+            '/bin/kill -TERM -- -"$pid"; fi'], q, q, q));
+        if st ~= 0, logStep('中止采集', '✗', '%s', firstLine(out)); end
+    end
+
+    function checkCancelled()
+        if A.cancelled || ~isvalid(fig), error('本次操作已取消。'); end
+    end
+
+    function playAudio(y)
+        checkCancelled();
+        A.player = mkPlayer(y);
+        play(A.player);
+        while isplaying(A.player)
+            pause(0.05); checkCancelled();
+        end
+        checkCancelled();
+    end
+
+    function clearCapture()
+        A.devStrs = {};
+        A.dev.Items = {'(点「① 自检」后枚举)'};
+        A.dev.Enable = 'off'; A.btnAlsa.Enable = 'off';
+    end
+
+    function credentialsChanged()
+        jdisconnect(); clearCapture();
+        A.rdir.Value = ''; A.rdir.Enable = 'off';
+    end
+
+    function q = remoteDir()
+        p = strtrim(A.rdir.Value);
+        if startsWith(p, '~/')
+            q = ['$HOME/' shellQuote(p(3:end))];
+        else
+            q = shellQuote(p);
         end
     end
 
     function refreshOutputs()
+        if A.busy, return, end
         cur = A.odev.Value;
         [nm, A.odevIDs] = listOutputs();
         A.odev.Items = nm;
@@ -709,15 +811,32 @@ function gui()
     end
 
     function setBusy(tf)
+        if ~isvalid(fig), return, end
+        if tf
+            A.cancelled = false;
+        elseif ~isempty(A.job)
+            stopJob();
+            A.job = '';
+        end
+        A.busy = tf;
         s = {'on','off'};  s = s{1+tf};
         A.btnCheck.Enable = s;  A.btnSync.Enable  = s;
         A.btnLevel.Enable = s;  A.btnRun.Enable   = s;
         A.btnAna.Enable   = s;
+        A.host.Enable = s; A.user.Enable = s; A.pass.Enable = s;
+        A.lead.Enable = s; A.tail.Enable = s; A.amp.Enable = s;
+        A.odev.Enable = s; A.fc.Enable = s; A.dur.Enable = s;
+        if ~isempty(A.rdir.Value), A.rdir.Enable = s; end
+        if ~isempty(A.devStrs), A.dev.Enable = s; A.btnAlsa.Enable = s; end
         drawnow;
     end
 
     % 日志只报流程和状态，不打印可执行命令——命令该出现在文档里，不该刷屏
     function closeAll()
+        if A.busy
+            onStop([],[]);
+            logf('请等待本次操作结束后再关闭窗口。'); return
+        end
         jdisconnect();
         delete(fig);
     end
@@ -796,4 +915,14 @@ end
 function b = mkButton(parent, txt, cb)
     b = uibutton(parent,'Text',txt,'ButtonPushedFcn',cb);
     b.Layout.Column = [1 2];
+end
+
+% POSIX shell 单引号转义，允许板上路径含空格/单引号。
+function q = shellQuote(s)
+    quote = char(39);
+    q = [quote strrep(char(s), quote, [quote char(34) quote char(34) quote]) quote];
+end
+
+function deleteIfPresent(p)
+    if isfile(p), delete(p); end
 end

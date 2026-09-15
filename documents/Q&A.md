@@ -219,3 +219,55 @@ Q3 的香橙派双声道 bug 就是这么定位出来的。**先验 DSP、再验
 - **`:6666` TCP 文件服务器 + `client.m`**：原工程用来从板子取文件，已删除——
   现在直接用 `scp`/FileZilla（一条命令的事，且 `client.m` 用的 `tcpip()` 已被新版 MATLAB 弃用）。
 - **生成代码里的 xcp / Pyserver 残留**：原是 External Mode 的，本工程数据通路不用它，已不参与。
+
+### Q11. GUI 填了正确 IP、用户名和密码，仍提示“网络不可达”
+
+`NoRouteToHostException` 发生在 TCP 连接阶段，还没有进行密码认证；不能据此判断密码错误。
+
+macOS 上先检查 **系统设置 → 隐私与安全性 → 本地网络** 中 MATLAB 的权限。
+但开关显示开启不代表桌面进程一定能访问局域网；单纯重启也不保证解决。
+
+本次按用户操作路径进行了手动复现：
+
+- 在正常桌面启动的 MATLAB 命令窗口运行 `gui`，手动填 IP、用户名和密码，再点自检：失败。
+- 在同一桌面 MATLAB 内，Java TCP 和系统 `nc` 都报 `No route to host`。
+- Codex 终端可连接同一地址；命令行启动的 MATLAB 批处理可通过 JSch 登录及枚举声卡。
+- 刷新已开启的 `MATLAB_R2025b`、`MATLABWindow` 本地网络开关，并完整退出、正常重开 MATLAB，手动自检仍失败。
+
+**根因已确认**：macOS 的「本地网络」隐私限制。判据是在**点图标启动**的 MATLAB
+里跑这一段——
+
+```matlab
+s = java.net.Socket;
+try
+    s.connect(java.net.InetSocketAddress('192.168.3.82',22), 3000);
+    disp('局域网 22 端口: OK'); s.close();
+catch e
+    disp(['局域网 22 端口: 失败 -> ' e.message]);
+end
+try, webread('https://www.mathworks.com','Timeout',8); disp('公网: OK');
+catch, disp('公网: 失败'); end
+```
+
+实测结果是 **局域网失败（No route to host）+ 公网 OK**。该限制的特征正是只挡
+局域网、不挡公网，只有它能解释这个组合；与 IP、密码、JSch 都无关。
+
+**为什么终端启动就能连**：这类授权是按 **责任进程（responsible process）** 归属的。
+从 Finder/Dock 启动时责任进程就是 MATLAB 自己；从终端启动时责任进程是终端，
+于是继承终端已有的局域网授权。环境变量 `__CFBundleIdentifier` 记录的就是这个
+责任进程——在终端里启动的 MATLAB 中它是终端 App 的标识，点图标启动则是
+`com.mathworks.matlab`。`gui.m` 已据此在连不上时直接点破是哪种情况。
+
+**为什么把开关打开也没用**：MATLAB 的代码签名 Identifier 是 `MATLAB`（`codesign -dv`
+可验证），与 bundle 标识 `com.mathworks.matlab` 不一致，而隐私授权按代码签名身份
+匹配，于是出现"设置里开关是开的、进程照样被挡"。
+
+**绕法**（按省事程度）：
+
+1. 在终端执行 `/Applications/MATLAB_R2025b.app/bin/matlab -desktop` 启动 MATLAB 桌面；
+   仓库 `tools/start_matlab_macos.command` 把这条命令包成了双击启动（双击 `.command`
+   会经由终端，责任进程即为终端）。
+2. `tccutil reset LocalNetwork com.mathworks.matlab` 后从 Finder 启动、重新触发授权弹窗。
+3. 上条无效时（很可能，因为授权按签名标识 `MATLAB` 存储）：`tccutil reset LocalNetwork` 全量重置。
+
+GUI 仍使用 JSch + SFTP，不读取 SSH 配置里的别名。
