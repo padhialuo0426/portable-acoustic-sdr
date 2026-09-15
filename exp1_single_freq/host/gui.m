@@ -84,6 +84,10 @@ function gui()
 
     function onCheck(~,~)
         setBusy(true);
+        % onCleanup 保证按钮一定恢复：try 块里的 return（连不上、scp 失败等失败
+        % 分支都有）是从整个回调返回，会跳过末尾的 setBusy(false)，导致一次失败
+        % 之后整个界面永久变灰按不动。
+        guard = onCleanup(@() setBusy(false));
         try
             logf('--- 自检 ---');
             [~,tgt,~,~] = sshBase();
@@ -114,13 +118,17 @@ function gui()
         catch e
             logf('✗ 自检出错：%s', e.message);
         end
-        setBusy(false);
     end
 
     function onLevel(~,~)
         setBusy(true);
+        % onCleanup 保证按钮一定恢复：try 块里的 return（连不上、scp 失败等失败
+        % 分支都有）是从整个回调返回，会跳过末尾的 setBusy(false)，导致一次失败
+        % 之后整个界面永久变灰按不动。
+        guard = onCleanup(@() setBusy(false));
         try
             logf('--- 电平校准：板上录 6s，本机放 4s 测试音 ---');
+            if ~ensureConn(), return, end
             wav = '/tmp/pasdr_level.wav';
             bgssh(sprintf('arecord -D %s -f S16_LE -r 8000 -c 1 -d 6 %s', A.dev.Value, wav));
             pause(1);
@@ -149,14 +157,18 @@ function gui()
         catch e
             logf('✗ 电平校准出错：%s', e.message);
         end
-        setBusy(false);
     end
 
     function onRun(~,~)
         setBusy(true);
+        % onCleanup 保证按钮一定恢复：try 块里的 return（连不上、scp 失败等失败
+        % 分支都有）是从整个回调返回，会跳过末尾的 setBusy(false)，导致一次失败
+        % 之后整个界面永久变灰按不动。
+        guard = onCleanup(@() setBusy(false));
         try
             tcap = ceil(A.lead.Value + A.dur.Value + A.tail.Value);
             logf('--- 一键实测 ---');
+            if ~ensureConn(), return, end
             logf('单频 fc=%g Hz  发射 %.1fs  采集窗口 -t %d', ...
                  A.fc.Value, A.dur.Value, tcap);
 
@@ -191,17 +203,19 @@ function gui()
         catch e
             logf('✗ 实测出错：%s', e.message);
         end
-        setBusy(false);
     end
 
     function onAnalyzeOnly(~,~)
         setBusy(true);
+        % onCleanup 保证按钮一定恢复：try 块里的 return（连不上、scp 失败等失败
+        % 分支都有）是从整个回调返回，会跳过末尾的 setBusy(false)，导致一次失败
+        % 之后整个界面永久变灰按不动。
+        guard = onCleanup(@() setBusy(false));
         try
             doAnalyze(fullfile(A.here,'single_f.mat'));
         catch e
             logf('✗ 分析出错：%s', e.message);
         end
-        setBusy(false);
     end
 
     function onStop(~,~)
@@ -336,6 +350,20 @@ function gui()
         end
     end
 
+    % 开跑前先探一次连通。否则主机/密码填错时，会白放完整段音频、再慢慢
+    % 等满超时才失败——用户等一分钟才知道是 IP 打错了。
+    function ok = ensureConn()
+        [st,out] = ssh('true');
+        ok = (st == 0);
+        if ~ok
+            [~,tgt,~,~] = sshBase();
+            logf('✗ 连不上 %s，已中止。', tgt);
+            o = strtrim(out);
+            if ~isempty(o), logf('  %s', o); end
+            logf('  先点「① 自检」确认主机/用户名/密码，或改用密钥登录。');
+        end
+    end
+
     function [st,out] = ssh(remoteCmd)
         [pre,tgt,opts,ok] = sshBase();
         if ~ok, st = 255; out = 'sshpass 缺失'; return, end
@@ -373,7 +401,11 @@ function gui()
         while toc(t0) < timeoutSec
             % 必须用 -x（精确匹配进程名）：-f 会匹配到承载 pgrep 的那条
             % ssh 命令行本身（里面就含进程名），导致永远判定为"还在跑"。
-            [~,out] = ssh(sprintf('pgrep -x %s >/dev/null && echo RUN || echo DONE', procName));
+            [st,out] = ssh(sprintf('pgrep -x %s >/dev/null && echo RUN || echo DONE', procName));
+            if st ~= 0
+                logf('△ 轮询板上进程时 ssh 失败，不再空转等待。');
+                return          % 连接已经断了，继续轮询只是把超时耗满
+            end
             if contains(out,'DONE'), ok = true; return, end
             pause(0.5);
         end
