@@ -25,13 +25,20 @@ function gui()
     root = uigridlayout(fig,[1 2]);
     root.ColumnWidth = {340,'1x'};
 
-    gL = uigridlayout(uipanel(root,'Title','设置与操作'),[16 2]);
-    gL.RowHeight   = [repmat({26},1,10), repmat({34},1,5), {'1x'}];
+    gL = uigridlayout(uipanel(root,'Title','设置与操作'),[18 2]);
+    gL.RowHeight   = [repmat({26},1,12), repmat({32},1,5), {'1x'}];
     gL.ColumnWidth = {100,'1x'};
+    gL.RowSpacing  = 4;      % 默认 10 会把 17 个间隙累积成 170px，末尾按钮被挤出可视区
 
     lab = @(t) uilabel(gL,'Text',t,'HorizontalAlignment','right');
 
-    lab('ssh 主机');     A.host = uieditfield(gL,'text','Value','pi5');
+    lab('主机/IP');      A.host = uieditfield(gL,'text','Value','pi5', ...
+                              'Tooltip','ssh 别名（如 pi5）或 IP（如 192.168.3.82）');
+    lab('用户名');       A.user = uieditfield(gL,'text','Value','', ...
+                              'Placeholder','留空 = 用 ~/.ssh/config 里的 User');
+    lab('密码');         A.pass = uieditfield(gL,'text','Value','', ...
+                              'Placeholder','留空 = 密钥登录（推荐）', ...
+                              'Tooltip','注意：MATLAB 编辑框不支持掩码，密码会明文显示');
     lab('板上路径');     A.rdir = uieditfield(gL,'text','Value','~/portable-acoustic-sdr/exp1_single_freq');
     lab('ALSA 设备');    A.dev  = uieditfield(gL,'text','Value','plughw:2,0');
     lab('载波 fc (Hz)'); A.fc   = uieditfield(gL,'numeric','Value',1000,'Limits',[50 3900]);
@@ -43,8 +50,12 @@ function gui()
                                              'ValueChangedFcn',@(~,~)refreshTiming());
     lab('播放幅度');     A.amp  = uieditfield(gL,'numeric','Value',0.8,'Limits',[0 1]);
     [odevNames, A.odevIDs] = listOutputs();
-    lab('输出设备');     A.odev = uidropdown(gL,'Items',odevNames, ...
-                                             'Value',pickSpeaker(odevNames));
+    lab('输出设备');
+    gOd = uigridlayout(gL,[1 2]); gOd.ColumnWidth = {'1x',30};
+    gOd.RowHeight = {'1x'}; gOd.Padding = [0 0 0 0]; gOd.ColumnSpacing = 4;
+    A.odev = uidropdown(gOd,'Items',odevNames,'Value',pickSpeaker(odevNames));
+    uibutton(gOd,'Text','⟳','Tooltip','重新枚举输出设备（插拔耳机后点一下）', ...
+             'ButtonPushedFcn',@(~,~)refreshOutputs());
     lab('采集窗口');     A.capTxt = uilabel(gL,'Text','—');
 
     A.btnCheck = mkButton(gL,'① 自检（ssh / 可执行 / 声卡）',@onCheck);
@@ -61,7 +72,9 @@ function gui()
     A.axT = uiaxes(gRes); title(A.axT,'时域波形');  xlabel(A.axT,'时间 (s)');
     A.axF = uiaxes(gRes); title(A.axF,'频谱 (FFT)'); xlabel(A.axF,'频率 (Hz)');
 
-    A.log = uitextarea(uipanel(gR,'Title','日志'),'Editable','off','Value',cell(0,1));
+    gLog = uigridlayout(uipanel(gR,'Title','日志'),[1 1]);
+    gLog.Padding = [5 5 5 5];
+    A.log = uitextarea(gLog,'Editable','off','Value',cell(0,1),'FontName','Menlo');
 
     refreshTiming();
     logf('就绪。建议顺序：① 自检 → ② 电平校准 → ③ 一键实测。');
@@ -73,6 +86,12 @@ function gui()
         setBusy(true);
         try
             logf('--- 自检 ---');
+            [~,tgt,~,~] = sshBase();
+            if isempty(A.pass.Value)
+                logf('连接 %s（密钥登录）', tgt);
+            else
+                logf('连接 %s（密码登录，sshpass %s）', tgt, ternary(hasSshpass(),'可用','缺失'));
+            end
             [st,out] = ssh('hostname');
             if st ~= 0
                 logf('✗ ssh 连不上 %s：%s', A.host.Value, strtrim(out));
@@ -111,7 +130,7 @@ function gui()
             waitRemoteDone('arecord', 12);
 
             local = fullfile(tempdir,'pasdr_level.wav');
-            [st,out] = system(sprintf('scp -q %s:%s "%s"', A.host.Value, wav, local));
+            [st,out] = scpFrom(wav, local);
             if st ~= 0, logf('✗ 取回录音失败：%s', strtrim(out)); return, end
 
             y = audioread(local);
@@ -159,8 +178,7 @@ function gui()
 
             % 4) 取回
             localMat = fullfile(A.here,'single_f.mat');
-            [st,out] = system(sprintf('scp -q %s:%s/single_f.mat "%s"', ...
-                                      A.host.Value, A.rdir.Value, localMat));
+            [st,out] = scpFrom(sprintf('%s/single_f.mat', A.rdir.Value), localMat);
             if st ~= 0
                 logf('✗ scp 取回失败：%s', strtrim(out));
                 logf('  板上可能没产出 single_f.mat（采集设备打不开？见 Q&A Q1/Q2）。');
@@ -257,10 +275,14 @@ function gui()
         ok = ~isDead;
         if isDead
             logf('✗ 板上采到的数据全为 0——麦克风没收到任何信号。按可能性排：');
-            logf('   1) 「输出设备」选错：接了蓝牙耳机时声音不走扬声器（当前选的是 %s）', A.odev.Value);
-            logf('   2) 本机音量过低或静音；');
+            logf('   1) 选中设备的音量太低。注意 macOS/Windows 都是**按设备分别记忆音量**的，');
+            logf('      系统音量滑块只控制"当前默认输出"。若默认输出是蓝牙耳机，而这里选的是');
+            logf('      %s，那么调系统音量调的是耳机、扬声器仍停在旧音量——', A.odev.Value);
+            logf('      声音确实从扬声器出来了，但小到麦克风收不到。');
+            logf('      解决：把系统输出临时切到该设备再调音量，或直接断开耳机。');
+            logf('   2) 「输出设备」选错（当前选的是 %s）；', A.odev.Value);
             logf('   3) 麦克风没接好 / 「ALSA 设备」card 号不对（见 Q&A Q2/Q4）。');
-            logf('   先点「② 电平校准」，看 RMS 是否随放音跳起来。');
+            logf('   先点「② 电平校准」，看 RMS 是否随放音跳起来——它就是用来定位这类问题的。');
         end
     end
 
@@ -276,15 +298,71 @@ function gui()
         end
     end
 
+    % 拼 ssh 公共部分。密码非空时走 sshpass -e：密码经环境变量传给 sshpass，
+    % 不出现在命令行里（否则同机其它用户 ps 就能看到）。留空则用密钥登录，
+    % 并加 BatchMode=yes 让连不上时立刻失败而不是卡在密码提示上。
+    function [pre, tgt, opts, ok] = sshBase()
+        ok  = true;  pre = '';
+        tgt = strtrim(A.host.Value);
+        u   = strtrim(A.user.Value);
+        if ~isempty(u), tgt = [u '@' tgt]; end
+        if isempty(A.pass.Value)
+            opts = '-o BatchMode=yes -o ConnectTimeout=8';
+        else
+            if ~hasSshpass()
+                logf('✗ 填了密码，但系统里没有 sshpass，无法用密码登录。');
+                if ispc
+                    logf('  Windows 没有 sshpass（自带的只有 ssh/scp）。请清空密码框改用密钥登录：');
+                    logf('       ssh-keygen -t ed25519');
+                    logf('       type %%USERPROFILE%%\\.ssh\\id_ed25519.pub | ssh %s "mkdir -p .ssh && cat >> .ssh/authorized_keys"', tgt);
+                else
+                    logf('  两条路：① 清空密码框，改用密钥登录（推荐）：');
+                    logf('       ssh-keygen -t ed25519 && ssh-copy-id %s', tgt);
+                    logf('  ② 安装 sshpass：macOS `brew install sshpass`，Debian `apt install sshpass`。');
+                end
+                ok = false;  opts = '';  return
+            end
+            setenv('SSHPASS', A.pass.Value);
+            pre  = 'sshpass -e ';
+            % 填了密码就明确只走密码认证，这需要同时关掉两样东西，否则密码框形同虚设：
+            %   PubkeyAuthentication=no —— 否则本机有可用密钥时 ssh 先用密钥连上，
+            %      密码填错也"成功"；
+            %   ControlMaster=no / ControlPath=none —— 这条更隐蔽：~/.ssh/config 里
+            %      常见的 `ControlMaster auto` + `ControlPersist` 会复用已认证的连接，
+            %      认证环节被整个跳过，错密码照样通（实测踩过）。
+            opts = ['-o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new ' ...
+                    '-o PubkeyAuthentication=no -o PreferredAuthentications=password ' ...
+                    '-o ControlMaster=no -o ControlPath=none'];
+        end
+    end
+
     function [st,out] = ssh(remoteCmd)
-        [st,out] = system(sprintf('ssh -o BatchMode=yes -o ConnectTimeout=8 %s "%s"', ...
-                                  A.host.Value, remoteCmd));
+        [pre,tgt,opts,ok] = sshBase();
+        if ~ok, st = 255; out = 'sshpass 缺失'; return, end
+        [st,out] = system(sprintf('%sssh %s %s "%s"', pre, opts, tgt, remoteCmd));
+    end
+
+    % 从板上取文件；remoteRel 相对板上工程目录，留空表示 remoteRel 是绝对路径
+    function [st,out] = scpFrom(remotePath, localPath)
+        [pre,tgt,opts,ok] = sshBase();
+        if ~ok, st = 255; out = 'sshpass 缺失'; return, end
+        % 先 cd 到目标目录、再用裸文件名作为 scp 的目的地。绕开 Windows 上
+        % "C:\..." 的盘符冒号被 scp 误当成 host: 前缀的老问题，macOS/Linux 下等价。
+        [dstDir, nm, ext] = fileparts(localPath);
+        if isempty(dstDir), dstDir = pwd; end
+        oldDir = cd(dstDir);
+        restore = onCleanup(@() cd(oldDir));
+        [st,out] = system(sprintf('%sscp -q %s %s:%s "%s"', ...
+                                  pre, opts, tgt, remotePath, [nm ext]));
     end
 
     function bgssh(remoteCmd)
-        c = sprintf('ssh -o BatchMode=yes %s "%s"', A.host.Value, remoteCmd);
+        [pre,tgt,opts,ok] = sshBase();
+        if ~ok, return, end
+        c = sprintf('%sssh %s %s "%s"', pre, opts, tgt, remoteCmd);
         if ispc
-            system(sprintf('start /b %s > NUL 2>&1', c));
+            % 空标题 "" 不能省：start 会把第一个带引号的参数当成窗口标题
+            system(sprintf('start "" /b %s > NUL 2>&1', c));
         else
             system(sprintf('%s > /dev/null 2>&1 &', c));
         end
@@ -299,6 +377,15 @@ function gui()
             if contains(out,'DONE'), ok = true; return, end
             pause(0.5);
         end
+    end
+
+    function refreshOutputs()
+        cur = A.odev.Value;
+        [nm, A.odevIDs] = listOutputs();
+        A.odev.Items = nm;
+        if any(strcmp(nm, cur)), A.odev.Value = cur;
+        else,                    A.odev.Value = pickSpeaker(nm); end
+        logf('输出设备已刷新，共 %d 个：%s', numel(nm), strjoin(nm, ' | '));
     end
 
     function refreshTiming()
@@ -323,6 +410,19 @@ function gui()
 end
 
 %% ------------------------- 局部函数 -------------------------
+
+function v = ternary(c, a, b)
+    if c, v = a; else, v = b; end
+end
+
+function ok = hasSshpass()
+    if ispc
+        [s,~] = system('where sshpass');
+    else
+        [s,~] = system('command -v sshpass');
+    end
+    ok = (s == 0);
+end
 
 function [names, ids] = listOutputs()
     names = {};  ids = [];
