@@ -65,8 +65,7 @@ flowchart LR
 ├── common/              跨实验共享的板级底层（音频 I/O + MAT 写入）
 ├── exp1_single_freq/    实验一 · 单频信号测试
 ├── exp2_dpsk/           实验二 · DPSK 差分相移键控
-├── exp3_chirp/          实验三 · 线性调频(chirp)扩频通信
-└── slx_backup_.../      原生 R2025b .slx 模型备份
+└── exp3_chirp/          实验三 · 线性调频(chirp)扩频通信
 ```
 
 ## 共享底层 `common/`
