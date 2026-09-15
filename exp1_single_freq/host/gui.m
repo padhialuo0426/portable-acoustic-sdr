@@ -66,8 +66,8 @@ function gui()
              'ButtonPushedFcn',@(~,~)refreshOutputs());
     lab('采集窗口');     A.capTxt = uilabel(gL,'Text','—');
 
-    A.btnCheck = mkButton(gL,'① 自检（连接 / 同步源码 / 枚举声卡）',@onCheck);
-    A.btnBuild = mkButton(gL,'② 板上编译',@onBuild);
+    A.btnCheck = mkButton(gL,'① 自检（连接 / 枚举声卡）',@onCheck);
+    A.btnSync  = mkButton(gL,'② 同步源码到板上并编译',@onSync);
     A.btnLevel = mkButton(gL,'③ 电平校准（放测试音测 RMS）',@onLevel);
     A.btnRun   = mkButton(gL,'④ 一键声学实测',@onRun);
     A.btnAna   = mkButton(gL,'仅分析已取回的 single_f.mat',@onAnalyzeOnly);
@@ -86,7 +86,7 @@ function gui()
     A.log = uitextarea(gLog,'Editable','off','Value',cell(0,1),'FontName','Menlo');
 
     refreshTiming();
-    logf('就绪。顺序：① 自检 → ② 板上编译 → ③ 电平校准 → ④ 一键实测');
+    logf('就绪。顺序：① 自检 → ② 同步并编译 → ③ 电平校准 → ④ 一键实测');
     logf('放音在本机、录音在板子，不要自放自录');
 
     %% ------------------------- 回调 -------------------------
@@ -107,26 +107,40 @@ function gui()
             end
             logStep(sprintf('连接 %s', tgt), '✓', '%s', strtrim(out));
 
-            if ~deployFiles(),  return, end
-            if ~refreshAlsa(),  return, end
+            % 板上路径由实验目录名推出，不需要用户填
+            [~, expName] = fileparts(fileparts(A.here));
+            A.rdir.Value  = sprintf('~/portable-acoustic-sdr/%s', expName);
+            A.rdir.Enable = 'on';
+
+            if ~refreshAlsa(), return, end
+
+            [st,~] = ssh(sprintf('test -d %s', A.rdir.Value));
+            if st ~= 0
+                logStep('板上源码', '△', '还没同步，请点「② 同步源码到板上并编译」');
+                return
+            end
+            logStep('板上源码', '✓', '%s', A.rdir.Value);
 
             [st,~] = ssh(sprintf('test -x %s/build/sdr_rx', A.rdir.Value));
             if st == 0
                 logStep('板上可执行', '✓', '已就绪');
             else
-                logStep('板上可执行', '△', '未编译，请点「② 板上编译」');
+                logStep('板上可执行', '△', '未编译，请点「② 同步源码到板上并编译」');
             end
         catch e
             logStep('自检', '✗', '%s', firstLine(e.message));
         end
     end
 
-    function onBuild(~,~)
+    function onSync(~,~)
         setBusy(true);
         guard = onCleanup(@() setBusy(false));
         try
-            logf('--- ② 板上编译 ---');
-            if ~ready() || ~ensureConn(), return, end
+            logf('--- ② 同步源码到板上并编译 ---');
+            if ~ensureConn(), return, end
+            if ~deployFiles(), return, end
+            % make clean 不能省：PC 与板子时钟可能有偏差，新 .c 的时间戳不一定
+            % 比旧 .o 新，make 会误判"已是最新"而不重编，跑的还是旧逻辑
             logStep('编译', '▶', '板上 gcc，稍候');
             [~,out] = ssh(sprintf('cd %s && make clean >/dev/null 2>&1 && make 2>&1', ...
                                   A.rdir.Value));
@@ -144,7 +158,7 @@ function gui()
                 logf('  %s', strtrim(tail_{i}));
             end
         catch e
-            logStep('板上编译', '✗', '%s', firstLine(e.message));
+            logStep('同步并编译', '✗', '%s', firstLine(e.message));
         end
     end
 
@@ -435,6 +449,11 @@ function gui()
 
 
         remoteRoot = '~/portable-acoustic-sdr';
+        % 先删掉板上旧的生成代码目录：tar 解包只覆盖/新增、不删除，若这次重新
+        % 生成让某个 .c 改了名或消失，残留的"孤儿 .c"会被 Makefile 的 *.c 通配
+        % 编进去而报错（教程 5.1 提醒过的坑）。手写源码目录不会有这问题，不动。
+        ssh(sprintf('rm -rf %s/%s/simulink_model', remoteRoot, expName));
+
         [st,out] = scpTo(tgz, '/tmp/pasdr_deploy.tgz');
         if st ~= 0, logStep('同步源码', '✗', '上传失败：%s', firstLine(out)); return, end
         % --exclude='._*'：macOS 的扩展属性会被 MATLAB 的 tar 打成 AppleDouble
@@ -456,6 +475,12 @@ function gui()
         ok = ~isempty(strtrim(A.rdir.Value)) && ~isempty(alsaDev());
         if ~ok
             logStep('前置检查', '✗', '还没自检，先点「① 自检」');
+            return
+        end
+        [st,~] = ssh(sprintf('test -x %s/build/sdr_rx', A.rdir.Value));
+        ok = (st == 0);
+        if ~ok
+            logStep('前置检查', '✗', '板上没有可执行，先点「② 同步源码到板上并编译」');
         end
     end
 
@@ -542,7 +567,7 @@ function gui()
 
     function setBusy(tf)
         s = {'on','off'};  s = s{1+tf};
-        A.btnCheck.Enable = s;  A.btnBuild.Enable = s;
+        A.btnCheck.Enable = s;  A.btnSync.Enable  = s;
         A.btnLevel.Enable = s;  A.btnRun.Enable   = s;
         A.btnAna.Enable   = s;
         drawnow;
