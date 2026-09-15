@@ -115,12 +115,18 @@ function gui()
             A.rdir.Value = '';  A.rdir.Enable = 'off';
             clearCapture();
             tgt = jTarget();
-            [st,out] = ssh('hostname');
+            % hostname 不是 POSIX 命令，Arch、精简 Debian、多数容器镜像都不装它
+            % （远端 shell 会报 command not found，退出码 127，于是连接本来好好的
+            % 却被判成失败）。uname -n 才是 POSIX 定义的取主机名方式；末尾 echo
+            % 兜底让这条命令必定成功——主机名只用于显示，取不到不该阻断自检。
+            [st,out] = ssh('uname -n 2>/dev/null || cat /etc/hostname 2>/dev/null || echo unknown');
             if st ~= 0
                 logStep(sprintf('连接 %s', tgt), '✗', '%s', firstLine(out));
                 return
             end
-            logStep(sprintf('连接 %s', tgt), '✓', '%s', strtrim(out));
+            hn = firstLine(out);
+            if isempty(hn) || strcmp(hn, 'unknown'), hn = '(主机名未知)'; end
+            logStep(sprintf('连接 %s', tgt), '✓', '%s', hn);
 
             if ~refreshAlsa(), return, end
 
