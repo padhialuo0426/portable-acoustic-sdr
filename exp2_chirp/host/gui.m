@@ -20,6 +20,7 @@ function gui()
 
     A.here = fileparts(mfilename('fullpath'));
     if isempty(A.here), A.here = pwd; end
+    A.jses = [];  A.jkey = '';      % 复用的 JSch 会话
     A.imgdir = fullfile(A.here, '..', 'baseband_images');
     A.fs = 8000; A.T = 0.1; A.B = 200; A.fc = 1000; A.n = 800;
     A.mseq  = [1 0 0 1 1 0 1 0 1 1 1 1 0 0 0];
@@ -38,13 +39,19 @@ function gui()
 
     lab = @(t) uilabel(gL,'Text',t,'HorizontalAlignment','right');
 
-    lab('主机/IP');      A.host = uieditfield(gL,'text','Value','pi5', ...
-                              'Tooltip','ssh 别名（如 pi5）或 IP（如 192.168.3.82）');
+    % 三项都必填。走 MATLAB 自带的 JSch，它不读 ~/.ssh/config，所以「主机/IP」
+    % 不能填 ssh 别名（pi5 这种），要填真实 IP 或可解析的主机名。
+    lab('主机/IP');      A.host = uieditfield(gL,'text','Value','', ...
+                              'Placeholder','如 192.168.3.82', ...
+                              'Tooltip','IP 或可解析主机名；不支持 ~/.ssh/config 里的别名', ...
+                              'ValueChangedFcn',@(~,~)jdisconnect());
     lab('用户名');       A.user = uieditfield(gL,'text','Value','', ...
-                              'Placeholder','留空 = 用 ~/.ssh/config 里的 User');
+                              'Placeholder','板子登录名，如 pi', ...
+                              'ValueChangedFcn',@(~,~)jdisconnect());
     lab('密码');         A.pass = uieditfield(gL,'text','Value','', ...
-                              'Placeholder','留空 = 密钥登录（推荐）', ...
-                              'Tooltip','注意：MATLAB 编辑框不支持掩码，密码会明文显示');
+                              'Placeholder','板子登录密码', ...
+                              'Tooltip','注意：MATLAB 编辑框不支持掩码，密码会明文显示', ...
+                              'ValueChangedFcn',@(~,~)jdisconnect());
     lab('板上路径');     A.rdir = uieditfield(gL,'text','Value','','Enable','off', ...
                               'Placeholder','点「① 自检」后自动填入');
     lab('ALSA 设备');
@@ -94,8 +101,10 @@ function gui()
     gLog.Padding = [5 5 5 5];
     A.log = uitextarea(gLog,'Editable','off','Value',cell(0,1),'FontName','Menlo');
 
+    fig.CloseRequestFcn = @(~,~) closeAll();
     refreshTiming();
     logf('就绪。顺序：① 自检 → ② 同步并编译 → ③ 电平校准 → ④ 一键实测');
+    logf('先填「主机/IP」「用户名」「密码」三项（不支持 ~/.ssh/config 别名）');
     logf('放音在本机、录音在板子，不要自放自录');
 
     %% ------------------------- 回调 -------------------------
@@ -112,7 +121,7 @@ function gui()
             % 失败…），若不清空，上一次成功时填的路径会继续显示，而它可能早已
             % 不成立了。自检的语义应当是"显示的一切都是刚刚验证过的"。
             A.rdir.Value = '';  A.rdir.Enable = 'off';
-            [~,tgt,~,~] = sshBase();
+            tgt = jTarget();
             [st,out] = ssh('hostname');
             if st ~= 0
                 logStep(sprintf('连接 %s', tgt), '✗', '%s', firstLine(out));
@@ -411,43 +420,7 @@ function gui()
         end
     end
 
-    % 拼 ssh 公共部分。密码非空时走 sshpass -e：密码经环境变量传给 sshpass，
-    % 不出现在命令行里（否则同机其它用户 ps 就能看到）。留空则用密钥登录，
-    % 并加 BatchMode=yes 让连不上时立刻失败而不是卡在密码提示上。
-    function [pre, tgt, opts, ok] = sshBase()
-        ok  = true;  pre = '';
-        tgt = strtrim(A.host.Value);
-        u   = strtrim(A.user.Value);
-        if ~isempty(u), tgt = [u '@' tgt]; end
-        if isempty(A.pass.Value)
-            opts = '-o BatchMode=yes -o ConnectTimeout=8';
-        else
-            if ~hasSshpass()
-                logStep('密码登录', '✗', '本机没有 sshpass');
-                if ispc
-                    logf('  Windows 没有 sshpass：请清空密码框改用密钥登录（见教程附录）');
-                else
-                    logf('  清空密码框改用密钥登录（推荐），或先安装 sshpass');
-                end
-                ok = false;  opts = '';  return
-            end
-            setenv('SSHPASS', A.pass.Value);
-            pre  = 'sshpass -e ';
-            % 填了密码就明确只走密码认证，这需要同时关掉两样东西，否则密码框形同虚设：
-            %   PubkeyAuthentication=no —— 否则本机有可用密钥时 ssh 先用密钥连上，
-            %      密码填错也"成功"；
-            %   ControlMaster=no / ControlPath=none —— 这条更隐蔽：~/.ssh/config 里
-            %      常见的 `ControlMaster auto` + `ControlPersist` 会复用已认证的连接，
-            %      认证环节被整个跳过，错密码照样通（实测踩过）。
-            opts = ['-o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new ' ...
-                    '-o PubkeyAuthentication=no -o PreferredAuthentications=password ' ...
-                    '-o ControlMaster=no -o ControlPath=none'];
-        end
-    end
-
-    % 开跑前先探一次连通。否则主机/密码填错时，会白放完整段音频、再慢慢
-    % 等满超时才失败——用户等一分钟才知道是 IP 打错了。
-    % ---- 板上采集设备：ssh 过去 arecord -l 现场枚举 ----
+    % ---- 板上采集设备：连过去跑 arecord -l 现场枚举 ----
     function ok = refreshAlsa()
         ok = false;
         if ~ensureConn(), return, end
@@ -552,55 +525,168 @@ function gui()
     end
 
     function [st,out] = scpTo(localPath, remotePath)
-        [pre,tgt,opts,ok] = sshBase();
-        if ~ok, st = 255; out = 'sshpass 缺失'; return, end
-        [dstDir, nm, ext] = fileparts(localPath);
-        if isempty(dstDir), dstDir = pwd; end
-        oldDir = cd(dstDir);
-        restore = onCleanup(@() cd(oldDir));
-        [st,out] = system(sprintf('%sscp -q %s "%s" %s:%s', pre, opts, [nm ext], tgt, remotePath));
+        [st,out] = jput(localPath, remotePath);
     end
 
+    % 开跑前先探一次连通。否则主机/密码填错时，会白放完整段音频、再慢慢
+    % 等满超时才失败——用户等一分钟才知道是 IP 打错了。
     function ok = ensureConn()
         [st,out] = ssh('true');
         ok = (st == 0);
         if ~ok
-            [~,tgt,~,~] = sshBase();
-            logStep(sprintf('连接 %s', tgt), '✗', '%s', firstLine(out));
+            logStep(sprintf('连接 %s', jTarget()), '✗', '%s', firstLine(out));
             logf('  已中止。先用「① 自检」确认主机/用户名/密码');
         end
     end
 
-    function [st,out] = ssh(remoteCmd)
-        [pre,tgt,opts,ok] = sshBase();
-        if ~ok, st = 255; out = 'sshpass 缺失'; return, end
-        [st,out] = system(sprintf('%sssh %s %s "%s"', pre, opts, tgt, remoteCmd));
+    %% ---------------- 传输层：全部走 MATLAB 自带的 JSch ----------------
+    % 不调用系统的 ssh/scp/sshpass。JSch 来自 matlabroot/java/jarext/jsch.jar，
+    % 属于 MATLAB **基础安装**（本机一个支持包都没装，它照样可用），所以
+    % Windows/macOS/Linux 行为完全一致，填 IP+用户名+密码即可一键部署——这正是
+    % MathWorks 树莓派支持包能做到全平台一键部署的同一条路径。
+    %
+    % 两点代价，已知并接受：
+    %   1. 不读 ~/.ssh/config，主机栏不能用别名；
+    %   2. MATLAB 带的是 JSch 0.1.x，**不支持 ed25519 私钥**（实测 addIdentity
+    %      直接报 invalid privatekey），所以这里只做密码认证。
+    % 复用同一条 JSch 会话：自检/轮询会发很多条短命令，每条都新建 TCP+认证
+    % 太慢（等待板上进程时是 0.5s 一次）。凭据变了就重建。
+    function s = jsession()
+        if isempty(strtrim(A.host.Value)) || isempty(strtrim(A.user.Value)) ...
+                || isempty(A.pass.Value)
+            error('请先填写「主机/IP」「用户名」「密码」三项。');
+        end
+        key = sprintf('%s|%s', jTarget(), A.pass.Value);
+        if ~isempty(A.jses) && strcmp(A.jkey, key) && A.jses.isConnected()
+            s = A.jses;  return
+        end
+        jdisconnect();
+        j = javaObject('com.jcraft.jsch.JSch');
+        cfg = java.util.Properties();
+        cfg.put('StrictHostKeyChecking','no');   % 与命令行分支的 accept-new 对齐
+        [u, h] = jUserHost();
+        s = j.getSession(u, h, 22);
+        s.setPassword(A.pass.Value);
+        s.setConfig(cfg);
+        s.setTimeout(60000);      % 板上 make 期间输出有间隔，别让读超时打断
+        s.connect(10000);
+        A.jses = s;  A.jkey = key;
     end
 
-    % 从板上取文件；remoteRel 相对板上工程目录，留空表示 remoteRel 是绝对路径
+    function jdisconnect()
+        try
+            if ~isempty(A.jses) && A.jses.isConnected(), A.jses.disconnect(); end
+        catch
+        end
+        A.jses = [];  A.jkey = '';
+    end
+
+    function [u, h] = jUserHost()
+        h = strtrim(A.host.Value);
+        u = strtrim(A.user.Value);
+    end
+
+    function t = jTarget()
+        [u, h] = jUserHost();
+        if isempty(h),      t = '(未填主机)';
+        elseif isempty(u),  t = h;
+        else,               t = [u '@' h];
+        end
+    end
+
+    % 远端 stdout+stderr 合流后逐行读；不碰 byte[] 编组，省掉一类跨版本坑
+    function [st, out] = jexec(cmd)
+        st = 255;          % 出错时 catch 会填 out
+        try
+            s  = jsession();
+            ch = s.openChannel('exec');
+            % 分组重定向：直接追加 2>&1 只作用于 && 链的最后一环，
+            % 中间命令（如 tar/mkdir）的报错会漏掉
+            ch.setCommand(sprintf('{ %s ; } 2>&1', cmd));
+            in = ch.getInputStream();
+            ch.connect();
+            rd = java.io.BufferedReader(java.io.InputStreamReader(in, 'UTF-8'));
+            L = {};
+            while true
+                l = rd.readLine();
+                if isempty(l), break, end
+                L{end+1} = char(l); %#ok<AGROW>
+            end
+            while ~ch.isClosed(), pause(0.01); end
+            st = double(ch.getExitStatus());
+            ch.disconnect();
+            out = strjoin(L, newline);
+        catch e
+            out = jerr(e);
+        end
+    end
+
+    % 后台跑：channel 一断远端进程会收到 SIGHUP，必须 setsid+nohup 脱离
+    function jexecDetached(cmd)
+        try
+            s  = jsession();
+            ch = s.openChannel('exec');
+            % 本界面生成的命令里不含单引号，直接用单引号包住最可靠
+            ch.setCommand(sprintf('nohup setsid sh -c ''%s'' >/dev/null 2>&1 </dev/null &', cmd));
+            ch.connect();
+            pause(0.2);
+            ch.disconnect();
+        catch e
+            logStep('后台启动', '✗', '%s', jerr(e));
+        end
+    end
+
+    % SFTP 的初始目录就是家目录，但它不展开 ~，去掉前缀用相对路径即可
+    function p = jPath(p)
+        if startsWith(p, '~/'), p = p(3:end); end
+    end
+
+    function [st, out] = jput(localPath, remotePath)
+        st = 0;  out = '';
+        try
+            s  = jsession();
+            sf = s.openChannel('sftp');  sf.connect();
+            closer = onCleanup(@() sf.disconnect());
+            sf.put(localPath, jPath(remotePath));
+        catch e
+            st = 1;  out = jerr(e);
+        end
+    end
+
+    function [st, out] = jget(remotePath, localPath)
+        st = 0;  out = '';
+        try
+            s  = jsession();
+            sf = s.openChannel('sftp');  sf.connect();
+            closer = onCleanup(@() sf.disconnect());
+            sf.get(jPath(remotePath), localPath);
+        catch e
+            st = 1;  out = jerr(e);
+        end
+    end
+
+    function [st,out] = ssh(remoteCmd)
+        [st,out] = jexec(remoteCmd);
+    end
+
+    % Java 异常带一大段栈，日志里只要人看得懂的那句
+    function s = jerr(e)
+        s = firstLine(regexprep(e.message, '^Java exception occurred:\s*', ''));
+        s = strtrim(regexprep(s, '^com\.jcraft\.jsch\.\w+:\s*', ''));
+        if strcmpi(s, 'Auth fail') || strcmpi(s, 'Auth cancel')
+            s = '认证失败——用户名或密码不对';
+        end
+        if isempty(s), s = firstLine(e.message); end
+    end
+
+    % 从板上取文件。走 SFTP，没有命令行 scp 那套 "C:\..." 盘符被当成 host:
+    % 前缀的 Windows 老问题，本地路径直接给绝对路径即可。
     function [st,out] = scpFrom(remotePath, localPath)
-        [pre,tgt,opts,ok] = sshBase();
-        if ~ok, st = 255; out = 'sshpass 缺失'; return, end
-        % 先 cd 到目标目录、再用裸文件名作为 scp 的目的地。绕开 Windows 上
-        % "C:\..." 的盘符冒号被 scp 误当成 host: 前缀的老问题，macOS/Linux 下等价。
-        [dstDir, nm, ext] = fileparts(localPath);
-        if isempty(dstDir), dstDir = pwd; end
-        oldDir = cd(dstDir);
-        restore = onCleanup(@() cd(oldDir));
-        [st,out] = system(sprintf('%sscp -q %s %s:%s "%s"', ...
-                                  pre, opts, tgt, remotePath, [nm ext]));
+        [st,out] = jget(remotePath, localPath);
     end
 
     function bgssh(remoteCmd)
-        [pre,tgt,opts,ok] = sshBase();
-        if ~ok, return, end
-        c = sprintf('%sssh %s %s "%s"', pre, opts, tgt, remoteCmd);
-        if ispc
-            % 空标题 "" 不能省：start 会把第一个带引号的参数当成窗口标题
-            system(sprintf('start "" /b %s > NUL 2>&1', c));
-        else
-            system(sprintf('%s > /dev/null 2>&1 &', c));
-        end
+        jexecDetached(remoteCmd);
     end
 
     function ok = waitRemoteDone(procName, timeoutSec)
@@ -649,6 +735,11 @@ function gui()
     end
 
     % 日志只报流程和状态，不打印可执行命令——命令该出现在文档里，不该刷屏
+    function closeAll()
+        jdisconnect();
+        delete(fig);
+    end
+
     function logStep(label, mark, fmt, varargin)
         if nargin < 3 || isempty(fmt)
             logf('%s … %s', label, mark);
@@ -698,15 +789,6 @@ function s = firstLine(txt)
     if isempty(t), s = ''; return, end
     parts = strsplit(t, newline);
     s = strtrim(parts{1});
-end
-
-function ok = hasSshpass()
-    if ispc
-        [s,~] = system('where sshpass');
-    else
-        [s,~] = system('command -v sshpass');
-    end
-    ok = (s == 0);
 end
 
 function [names, ids] = listOutputs()
