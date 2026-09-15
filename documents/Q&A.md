@@ -114,11 +114,11 @@ set_param(mdl,'Toolchain','Automatically locate an installed toolchain');
 （**少最后一条会报错，见 Q10**）。生成到 `simulink_model/*_ert_rtw/`，再 `make`。
 若 Inport/Outport 改了名，同步改 `src/model_glue.c` 一处。详见各实验文档。
 
-### Q12. 为什么 `To File` 要换成 Outport？
+### Q12. 模型里为什么不能用 `To File`？`MatFileLogging` 为什么必须关？
 
-`ert.tlc` 下：`MatFileLogging=off` 时 `To File` 会被块归约删掉、`step()` 变空；
-`MatFileLogging=on` 又会拉入 `rt_logging.c`（牵 MEX 头，板上编不了）。
-所以改用 Outport，落盘交给板级手写的 `mat_sink.c`。
+`ert.tlc` 下这两件事互相矛盾：`MatFileLogging=off` 时 `To File` 会被块归约删掉、
+`step()` 变空；`MatFileLogging=on` 又会拉入 `rt_logging.c`（牵 MEX 头，板上编不了）。
+所以模型用 **Outport** 输出，落盘交给板级手写的 `mat_sink.c`。
 
 ### Q13. 高版本 MATLAB 的模型能在低版本打开吗？
 
@@ -143,10 +143,3 @@ set_param(mdl,'Toolchain','Automatically locate an installed toolchain');
 3. 到这一步才去查采集参数（声道数、设备名、增益）。
 
 Q3 那个双声道 bug 就是这么定位出来的。
-
----
-
-## 附：已删除的东西（别再找了）
-
-- **`:6666` TCP 文件服务器 + `client.m`**：用 `scp` 替代（`tcpip()` 也已被新版 MATLAB 弃用）。
-- **生成代码里的 xcp / Pyserver 残留**：原属 External Mode，本工程数据通路不用。

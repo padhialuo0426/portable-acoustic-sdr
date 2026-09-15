@@ -47,9 +47,9 @@ flowchart TD
 exp2_chirp/
 ├── Makefile           构建（MODEL/AUDIO 开关）
 ├── src/  include/      板级运行时 + 契约
-├── simulink_model/    改造后的多速率模型 + 生成的 C 代码
+├── simulink_model/    多速率模型 + 生成的 C 代码
 ├── baseband_images/   基带图片（待传信息）
-└── host/              PC 端脚本：MATLAB 发射/解码/仿真 + 免 MATLAB 的 Python 复刻
+└── host/              PC 端脚本：MATLAB 发射/解码/仿真 + 免 MATLAB 的 Python 实现
 ```
 
 ### `src/` + `include/`
@@ -64,14 +64,20 @@ exp2_chirp/
 
 | 文件 | 作用 |
 |---|---|
-| `chirp_rev_detect.slx` | 改造后的接收模型（含 15 个 Stateflow，**多速率**）。 |
+| `chirp_rev_detect.slx` | 接收模型：LFM 相关检测（含 15 个 Stateflow，**多速率**）。 |
 | `chirp_rev_detect_ert_rtw/*.c/.h` | 生成的纯算法 C（零支持包/零 rt_logging）。 |
 
-**模型改造**：
-- `ALSA Audio Capture` → **Inport `AudioIn`**（`int16[1600]` = 800样本×2声道，`[L0..799,R0..799]`）。
-- **仅保留** `toFileData5` → **Outport `out_data`**（标量判决值），删除其余 10 个未用 `To File`。
-- 配置 `ert.tlc` + `HardwareBoard=None` + `GenCodeOnly` + `MatFileLogging=off` + `Device Type=ARM Cortex-A (64-bit)` + `Toolchain=Automatically locate an installed toolchain`（见 [Q10](Q&A.md)）。
-- `Sum left & right channels and to single1/Matrix Sum` 勾选 **Saturate on integer overflow**：该块输出 `int16`，单声道采集时左右同源 ⇒ 求和为 `2x`，不饱和会回绕翻转（见 [Q5](Q&A.md)）。
+**模型接口**（`src/model_glue.c` 按这几个名字取值，改了要同步改那里）：
+
+- 输入：**Inport `AudioIn`**，`int16[1600]` = 800 样本 × 2 声道，布局 `[L0..799, R0..799]`。
+- 输出：**Outport `out_data`**，标量——每 0.1s 符号的判决值。
+
+**代码生成配置**：`ert.tlc` + `HardwareBoard=None` + `GenCodeOnly` + `MatFileLogging=off`
+（见 [Q12](Q&A.md)）+ `Device Type=ARM Cortex-A (64-bit)`
++ `Toolchain=Automatically locate an installed toolchain`（见 [Q10](Q&A.md)）。
+
+`Sum left & right channels and to single1/Matrix Sum` 勾选 **Saturate on integer overflow**：
+该块输出 `int16`，单声道采集时左右同源 ⇒ 求和为 `2x`，不饱和会回绕翻转（见 [Q5](Q&A.md)）。
 
 **多速率（与实验一的关键不同）**：模型双速率——`step0`@8000Hz（逐样本 chirp 相关）、
 `step1`@10Hz（每 800 样本一帧，读音频/出判决）。运行时
@@ -117,14 +123,14 @@ exp2_chirp/
 | `setup_paths.m` | 把脚本/图片/模型目录加入 MATLAB 路径 | — |
 | `sample_data/` | 一组真实样例 `chirp5.mat`+`info_all.mat`，可离线试解码 | — |
 
-> 路径已全部改为相对脚本自身定位（`here=fileparts(mfilename('fullpath'))`），换目录不会找不到文件；编码统一 UTF-8（原工程 GBK/UTF-8 混编，见 [Q&A](Q&A.md)）。
+> 路径已全部改为相对脚本自身定位（`here=fileparts(mfilename('fullpath'))`），换目录不会找不到文件；编码统一 UTF-8。
 
-### `host/` — 免 MATLAB 的 Python 复刻（与上面 `.m` 同名配对）
+### `host/` — 免 MATLAB 的 Python 实现（与上面 `.m` 同名配对）
 
 | 文件 | 作用 |
 |---|---|
-| `bok_emit.py` | 复刻 `bok_emit.m`：读任意 1-bit BMP（自动宽高、自适应组帧）→ 输出 `chirp_tx.raw/.wav/tx_truth.txt`，并打印声学采集建议 `-t` 秒数。 |
-| `bok_rev.py` | 复刻 `bok_rev.m`：从同一 BMP 读尺寸 → 帧同步 → 硬判决 → BER → ASCII 还原图。 |
+| `bok_emit.py` | 与 `bok_emit.m` 等价：读任意 1-bit BMP（自动宽高、自适应组帧）→ 输出 `chirp_tx.raw/.wav/tx_truth.txt`，并打印声学采集建议 `-t` 秒数。 |
+| `bok_rev.py` | 与 `bok_rev.m` 等价：从同一 BMP 读尺寸 → 帧同步 → 硬判决 → BER → ASCII 还原图。 |
 
 ## 任意图片支持
 
