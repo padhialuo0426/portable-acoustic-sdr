@@ -98,10 +98,25 @@ Device Type **只描述目标平台的数据模型**（整数/指针字长、字
 - **部署到板上**：宿主机只负责"传文件 + 触发板上编译"，**真正编译在板上跑**，
   宿主机**不需要 C 编译器、也不是非得 GNU make**。最省事是用板子自己 `git pull` +
   `ssh "make && run"`（Windows 10/11 自带 `ssh`，零安装）。
-- **本工程刻意不做"一键上板"自动化脚本**——它是教学平台，手动敲每条命令（scp/ssh/
-  arecord/make/run）本身就是要学的 Linux 过程，封成黑盒反而丢了学习价值。
+- **部署与编译刻意不做自动化**（传代码 / `make` / 查声卡这些仍然手敲）——它是教学
+  平台，这几步本身就是要学的 Linux 过程，封成黑盒反而丢了学习价值。
+- **但"声学实测"这一步提供了图形界面** `host/gui.m`（两个实验各一个）：
+  它只把「板上启动采集 → 本机放音 → 取回 .mat → 解码」串起来，不碰部署和编译。
+  原因很实际：这一步要反复跑很多遍，而且手动做时要盯着板子输出、卡着秒表切到
+  MATLAB 放音，容易失手。首次学习建议仍按 [手把手教程](手把手部署运行教程.md)
+  手动走一遍，理解清楚了再用界面提速。
 
-### Q9. 板子上 `make` 报找不到 `asoundlib.h` / `-lasound`
+### Q9. 用 `gui.m` 实测，判决流/录音全是 0
+
+**现象**：界面提示"板上采到的数据全为 0——麦克风没收到任何信号"。
+**原因（实测踩过）**：宿主机接着**蓝牙耳机**（AirPods 等），系统默认输出被耳机抢走，
+`sound()`/`audioplayer` 的声音全进了耳机，**根本没从扬声器发出去**，板上麦克风自然
+一无所获。手动跑 `bok_emit` 时同样会中招，而且现象更迷惑——脚本一切正常、就是解不出。
+**解决**：界面里有「输出设备」下拉，默认已优先选内置扬声器，并用 `audioplayer` 的
+device ID **显式指定**，不依赖系统默认输出；选到名字像耳机的设备时会给出告警。
+手动跑脚本时，则要自己先确认系统输出切回扬声器。
+
+### Q10. 板子上 `make` 报找不到 `asoundlib.h` / `-lasound`
 
 **原因**：没装 ALSA 开发库。
 **解决**：Debian/Ubuntu/树莓派/香橙派/Jetson `sudo apt install libasound2-dev`；
@@ -111,7 +126,7 @@ Fedora `sudo dnf install alsa-lib-devel`。（运行时只需 `libasound2`，编
 
 ## 三、MATLAB / 模型生成
 
-### Q10. `slbuild` 报 `Toolchain 'GNU GCC Embedded Linux' is not registered`
+### Q11. `slbuild` 报 `Toolchain 'GNU GCC Embedded Linux' is not registered`
 
 **现象**（macOS / Windows 宿主上重新生成代码时）
 ```
@@ -135,33 +150,33 @@ MATLAB 本来就不调用编译器，本工程的 C 代码是拿到板上用板�
 > 实测：R2025b + macOS(仅 Command Line Tools)，`single_fre_rev` 9 s、
 > `chirp_rev_detect` 27 s 生成完成，产物与入库代码一致。
 
-### Q11. `To File` 块的坑：为什么改成 Outport + 自写 mat_sink？
+### Q12. `To File` 块的坑：为什么改成 Outport + 自写 mat_sink？
 
 在 `ert.tlc` 下：`MatFileLogging=off` 时 `To File` 会被**块归约删掉**，整个 `step()`
 变空；`MatFileLogging=on` 又会拉入 `rt_logging.c`（牵 `matrix.h` 等 MEX 头，板上无法编译）。
 **解决**：把 `To File` 换成 **Outport**，输出在模型外由板级 `mat_sink.c`（手写 MAT-v4 写入器）落盘。
 
-### Q12. `matlab -batch` 跑完留下僵尸进程 / 卡住
+### Q13. `matlab -batch` 跑完留下僵尸进程 / 卡住
 
 **现象**：`-batch` 退出时 ServiceHost 常卡住，留下后台 shell。
 **解决**：批处理结束后 `pkill -9 -f "MATLAB.*-batch"` 清理。建议批处理脚本里把日志
 写文件、用后台跑，跑完显式清进程。
 
-### Q13. 高版本 MATLAB 的模型，能在低版本（如原工程 R2022a）打开吗？
+### Q14. 高版本 MATLAB 的模型，能在低版本（如原工程 R2022a）打开吗？
 
 **低→高安全**（向前兼容）；**高→低有风险**：用 `Simulink.exportToVersion` 导出到低版本
 可能丢信息、尤其 **Stateflow**（实验二有 15 个）。本工程统一用较高版本 MATLAB，不回退。
 
-### Q14. 改了模型怎么重新生成代码？
+### Q15. 改了模型怎么重新生成代码？
 
 见各实验文档"重新生成模型"，**脚本（`slbuild`）和 Simulink 界面（APPS→Embedded Coder→
 `Ctrl+B`）两种方式产物一致**，按习惯选。关键配置一样：`ert.tlc` + `HardwareBoard=None`
 + `GenCodeOnly=on` + `MatFileLogging=off` + `Device Type=ARM Cortex-A (64-bit)`
-+ `Toolchain=Automatically locate an installed toolchain`（少这一条会报错，见 [Q10](#q10-slbuild-报-toolchain-gnu-gcc-embedded-linux-is-not-registered)），
++ `Toolchain=Automatically locate an installed toolchain`（少这一条会报错，见 [Q11](#q11-slbuild-报-toolchain-gnu-gcc-embedded-linux-is-not-registered)），
 生成到 `simulink_model/*_ert_rtw/`，再 `make`。若 Inport/Outport 改了名，同步改
 `src/model_glue.c` 一处。
 
-### Q15. MATLAB 脚本中文注释乱码
+### Q16. MATLAB 脚本中文注释乱码
 
 **原因**：原工程脚本是 GBK/UTF-8 混编。**解决**：已统一转 UTF-8（R2025b 默认 UTF-8）。
 新增/改写脚本一律存 UTF-8。
@@ -170,7 +185,7 @@ MATLAB 本来就不调用编译器，本工程的 C 代码是拿到板上用板�
 
 ## 四、跨板排错方法论（重要）
 
-### Q16. 实采解不出码，怎么判断是"算法错"还是"采集错"？
+### Q17. 实采解不出码，怎么判断是"算法错"还是"采集错"？
 
 **分层隔离**，逐步缩小范围：
 

@@ -46,6 +46,8 @@ flowchart LR
 
 - **发射端**（`host/`）：纯 PC MATLAB，用 `sound()` 经声卡播放，本就与硬件支持包无关。
   移植时等价复刻；exp2 另提供免 MATLAB 的 Python 版（`host/bok_emit.py`）。
+  两个实验各有一个可选的 `host/gui.m`，把「板上启动采集 + 本机放音 + 取回 + 解码」
+  串成一次点击（部署与编译仍手敲，见 [Q&A](Q&A.md) Q8）。
 - **接收端**（板上 C）：移植的核心。Simulink 只负责生成**纯算法 C**，音频 I/O、
   落盘、调度全部由手写的 POSIX/ALSA 代码（`common/`）承担。
 - **取文件**：接收端把 `.mat` 写到板上本地盘，用标准 **`scp`/FileZilla** 拉回 PC。
