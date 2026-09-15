@@ -70,7 +70,7 @@ exp2_chirp/
 **模型改造**：
 - `ALSA Audio Capture` → **Inport `AudioIn`**（`int16[1600]` = 800样本×2声道，`[L0..799,R0..799]`）。
 - **仅保留** `toFileData5` → **Outport `out_data`**（标量判决值），删除其余 10 个未用 `To File`。
-- 配置 `ert.tlc` + `HardwareBoard=None` + `GenCodeOnly` + `MatFileLogging=off` + `Device Type=ARM Cortex-A (64-bit)` + `Toolchain=Automatically locate an installed toolchain`（见 [Q11](Q&A.md)）。
+- 配置 `ert.tlc` + `HardwareBoard=None` + `GenCodeOnly` + `MatFileLogging=off` + `Device Type=ARM Cortex-A (64-bit)` + `Toolchain=Automatically locate an installed toolchain`（见 [Q10](Q&A.md)）。
 - `Sum left & right channels and to single1/Matrix Sum` 勾选 **Saturate on integer overflow**：该块输出 `int16`，单声道采集时左右同源 ⇒ 求和为 `2x`，不饱和会回绕翻转（见 [Q5](Q&A.md)）。
 
 **多速率（与实验一的关键不同）**：模型双速率——`step0`@8000Hz（逐样本 chirp 相关）、

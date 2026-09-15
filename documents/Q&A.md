@@ -1,273 +1,152 @@
-# 常见问题与坑点 Q&A
+# 常见问题 Q&A
 
-按"现象 → 原因 → 解决"组织。很多坑本身就是 Linux / 音频 / 嵌入式部署的学习点，
-建议遇到时对照理解，而不是直接抄命令。
+做实验时容易撞上的坑，按「现象 → 原因 → 解决」速查。
+详细操作步骤看 [手把手部署运行教程](手把手部署运行教程.md)。
 
 ---
 
-## 一、声卡与设备选择
+## 一、板上采集
 
-### Q1. 直接跑 `./build/chirp_rx` 报 `capture slave is not defined` / `Invalid argument`
+### Q1. 打不开采集设备：`capture slave is not defined` / `Invalid argument`
 
-**现象**
-```
-ALSA lib pcm_asym.c: (_snd_pcm_asym_open) capture slave is not defined
-audio_io: 打开设备 'default' 失败: Invalid argument
-致命错误：无法打开采集设备 'default'
-```
-**原因**：不带 `-d` 时默认用 `default` 设备。树莓派等板子的 `default` PCM 常是
-asym 配置——**只接了播放、没有定义采集 slave**，所以拿 `default` 开采集就失败。
-**解决**：用 `-d` 显式指定麦克风设备，**不要用 `default` 采集**。见 Q2。
+**原因**：没带 `-d` 时默认用 `default` 设备，而板子的 `default` PCM 常只定义了播放、
+没定义采集 slave。
+**解决**：用 `-d` 显式指定麦克风，**不要用 `default` 采集**。设备名怎么选见 Q2。
 
-### Q2. 怎么选 `-d` 参数（采集设备名）？
-
-1. `arecord -l` 列出采集设备，找到麦克风那张卡的 **card 号 x**（`device` 号通常 0）。
-2. 跑时用 **`-d plughw:x,0`**（card 2 → `plughw:2,0`，card 1 → `plughw:1,0`）。
+### Q2. `-d` 该填什么
 
 ```bash
-arecord -l
-./build/chirp_rx -d plughw:1,0 -t 28
+arecord -l                      # 看麦克风是 card 几（device 号通常 0）
+./build/chirp_rx -d plughw:2,0 -t 28
 ```
 
-要点：
-- 用 **`plughw:`** 而非 `hw:`——`plug` 插件自动做采样率/声道转换（程序要 8000Hz、
-  单声道，设备不一定原生支持）；直接 `hw:` 可能因格式不匹配打不开。
-- **card 号在 USB 重新插拔或重启后可能变**，跑之前 `arecord -l` 瞟一眼最稳。
-  （实测：同一个 USB 麦克风在树莓派是 card 2、在香橙派是 card 1。）
-- 采集看 `arecord -l`、播放看 `aplay -l`，两者 card 号可能不同，别混。
+- 用 `plughw:` 而不是 `hw:`——`plug` 会自动做采样率/声道转换，直接 `hw:` 常因格式不匹配打不开。
+- **card 号在 USB 重插或重启后会变**，跑之前 `arecord -l` 现查。
+- 采集看 `arecord -l`、播放看 `aplay -l`，两者 card 号可能不同。
 
 ### Q3. 判决流恒为 −1、帧同步失败（信号明明很强）
 
-**现象**：某些板（实测香橙派 Ascend310B）上实采时判决流几乎全是 −1、找不到帧同步；
-但**文件直喂正常、把麦克风录音(`arecord -c1`)喂文件路径也正常**。
-**原因**：接收端原来开 **2 声道**采集、按 `inter[2i]/inter[2i+1]` 去交织。该板
-`plughw` 的 2 声道交织流里**单独取左/右任一路都解不出**（两路峰值都很强但都解不出），
-而 `plughw` 的**单声道下混**能正确解码。树莓派恰好 ch0 即麦克风信号，所以之前 2 声道能用。
-**解决**：接收端已**默认单声道采集 `-c 1`**（`plughw` 把任意设备下混为单声道，跨板最稳），
-单声道同时填模型左右两路。若确需立体声取左声道用 `-c 2`。**这是默认行为，无需改命令。**
+**原因**：某些板子（如香橙派）2 声道交织流里单独取左/右任一路都解不出。
+**解决**：接收端**默认就是单声道 `-c 1`**，无需改命令。确需立体声取左声道才用 `-c 2`。
 
-### Q4. 麦克风录到的全是静音（RMS≈2、峰值≈10）
+### Q4. 麦克风录到的全是静音（RMS 个位数）
 
-**现象**：实采全 0 判决；用下面的电平表测，安静环境 RMS 也只有 1~6。
-**原因**：麦克风没真正接好/接错孔/线路输入没信号——不是软件问题。
-**排查**（实时电平表，对着话筒说话看 RMS 是否跳到几百）：
+**原因**：麦克风没接好/接错孔——不是软件问题。
+**排查**：对着话筒说话，看 RMS 是否跳到几百。
+
 ```bash
-while :; do
-  arecord -D plughw:1,0 -f S16_LE -r 8000 -c 1 -d 1 /tmp/m.wav 2>/dev/null
-  python3 -c "import wave,struct,math;w=wave.open(open('/tmp/m.wav','rb'));n=w.getnframes();s=struct.unpack('<%dh'%n,w.readframes(n));print('RMS=%.0f 峰值=%d'%(math.sqrt(sum(v*v for v in s)/n),max(abs(v) for v in s)))"
-done
+arecord -D plughw:2,0 -f S16_LE -r 8000 -c 1 -d 1 /tmp/m.wav
+python3 -c "import wave,struct,math;w=wave.open(open('/tmp/m.wav','rb'));n=w.getnframes();s=struct.unpack('<%dh'%n,w.readframes(n));print('RMS=%.0f 峰值=%d'%(math.sqrt(sum(v*v for v in s)/n),max(abs(v) for v in s)))"
 ```
-说话时 RMS 从个位数跳到几百~上千 = 麦克风正常；一直个位数 = 接触/接线问题。
 
-### Q5. 信号过载/削顶导致解不出
+### Q5. 信号过载，峰值顶到 32767 解不出
 
-**现象**：增益拉满后判决异常、峰值顶到 32767。
 **原因**：扬声器音量 + 麦克风增益都拉满 → 削顶失真。
-**解决**：适当降低宿主机播放音量与板上采集增益（`amixer -c <card> sset <控件> <百分比> cap`，
-控件名因设备而异，如某 USB 卡是 `Line Capture Volume`），让峰值在几千~一万、不顶满。
+**解决**：降低宿主机播放音量或板上采集增益，让峰值落在**几千**量级。
 
-> 补充：模型里"左右声道求和转 single"那一步的输出是 `int16`。它原先**没开饱和**，
-> 单声道采集时左右填同一路 ⇒ 求和等于 `2x`，峰值一过 16383 就**按位回绕、符号翻转**
-> （比削顶更恶劣的失真）。现已在两个模型的 `Matrix Sum` 上勾选
-> *Saturate on integer overflow*，超限时钳到 ±32767。实测在无噪声文件直喂下，
-> 回绕与饱和两版在满量程输入时 **BER 都是 0**（匹配滤波/带通把失真产物滤掉了），
-> 所以这条改动是**防御性的**——真实声学信道有噪声时才会体现出余量差别。
+```bash
+amixer -c <card> sset <控件> 70% cap      # 控件名因声卡而异，先 amixer -c <card> scontrols 查
+```
 
-### Q6. 大图声学采集解不出（小图却没问题）
+### Q6. 大图解不出，小图却正常
 
-**原因**：信号太长、采集时长 `-t` 不够，帧尾还没采到就停了。
-**解决**：`host/bok_emit.py` 会**打印建议的 `-t` 秒数**，按它给足（如兰州大学 2048 位
-信号 ~210s，要 `-t 217` 以上）。
+**原因**：采集时长 `-t` 不够，帧尾还没采到就停了。
+**解决**：`host/bok_emit.py` 会打印建议的 `-t` 秒数，按它给足（2048 位的图约需 `-t 217`）。
 
 ---
 
-## 二、跨平台 / 编译
+## 二、宿主机放音
 
-### Q7. 模型 Device Type 是 ARM aarch64，为什么生成的 C 在 x86 宿主机也能编译运行？
+### Q7. 判决流 / 录音全是 0
 
-Device Type **只描述目标平台的数据模型**（整数/指针字长、字节序、char 符号性），
-代码生成器据此选 typedef、做定点/溢出推理，产出的是**可移植 ISO C**，不含任何架构汇编。
-真正决定机器码的是你调用的编译器（宿主 `gcc`→x86-64、板上 `gcc`→aarch64）。
-能两边通吃，是因为 **x86-64 Linux 与 aarch64 Linux 数据模型相同**（都是 LP64、小端），
-所以按 aarch64 写下的假设在 x86-64 上也成立。只有当目标数据模型与编译平台不一致、
-且代码对宽度/字节序敏感时才会出问题——本工程用固定宽度类型，两边都安全。
+**原因**：声音没从扬声器发出去。两种情形：
 
-### Q8. 交叉编译 / 一键上板需要在宿主机装什么？
+1. 宿主机接着蓝牙耳机，系统默认输出被耳机抢走；
+2. 更隐蔽——**音量是按设备分别记忆的**，系统音量滑块只作用于"当前默认输出"。
+   于是默认输出是耳机、系统音量 70%，而扬声器仍停在很低的旧音量：
+   **声音确实出来了、人耳也听得见，但弱到板上麦克风收不到**。
 
-- **交叉编译**（在 x86 上为 ARM 板编译）：`make CC=aarch64-linux-gnu-gcc`，目标板需有对应 `libasound`。
-- **部署到板上**：宿主机只负责"传文件 + 触发板上编译"，**真正编译在板上跑**，
-  宿主机**不需要 C 编译器、也不是非得 GNU make**。最省事是用板子自己 `git pull` +
-  `ssh "make && run"`（Windows 10/11 自带 `ssh`，零安装）。
-- **手动流程是教学正路，也是本文档的主线**：第 2 节传代码、第 3/4 节板上 `make`
-  与声学实测，每条命令（`tar`/`ssh`/`scp`/`arecord`/`make`）都是要学的 Linux 过程。
-  **首次学习请按 [手把手教程](手把手部署运行教程.md) 手动走一遍。**
-- **理解之后，图形界面** `host/gui.m`（两个实验各一个）**可以把这套流程一键化**。
-  它**不调用系统的 ssh/scp**，而是用 MATLAB 基础安装自带的 JSch
-  （`matlabroot/java/jarext/jsch.jar`），填 IP + 用户名 + 密码即可，
-  **三个平台行为一致、不需要配密钥**。代价是 JSch 不读 `~/.ssh/config`
-  （主机栏要填真实 IP）、且 MATLAB 带的 0.1.x 不支持 ed25519 私钥（只做密码认证）。
-  四步是：
-  ① 自检（连上板子 + `arecord -l` 枚举采集设备 + 报板上源码/可执行现状）
-  → ② 同步源码到板上并编译（打包传 Makefile/.c/.h 过去 + ssh 触发板上 `make`，
-  真正的编译仍在板子上用板子自己的 gcc 做）
-  → ③ 电平校准 → ④ 一键声学实测（板上启动采集 + 本机放音 + 取回 + 解码）。
-  这些步骤要反复跑很多遍，手动做时还要盯着板子输出、卡着秒表切到 MATLAB 放音，
-  容易失手——界面解决的是重复劳动，不是替你理解流程。
-
-### Q9. 用 `gui.m` 实测，判决流/录音全是 0
-
-**现象**：界面提示"板上采到的数据全为 0——麦克风没收到任何信号"。
-**原因（实测踩过）**：宿主机接着**蓝牙耳机**（AirPods 等），系统默认输出被耳机抢走，
-`sound()`/`audioplayer` 的声音全进了耳机，**根本没从扬声器发出去**，板上麦克风自然
-一无所获。手动跑 `bok_emit` 时同样会中招，而且现象更迷惑——脚本一切正常、就是解不出。
-**解决**：界面里有「输出设备」下拉，默认已优先选内置扬声器，并用 `audioplayer` 的
-device ID **显式指定**，不依赖系统默认输出；选到名字像耳机的设备时会给出告警。
-手动跑脚本时，则要自己先确认系统输出切回扬声器。
-
-> **还有个更隐蔽的变种**（实测踩过）：`audioplayer` 的 device ID 确实能把声音送到指定
-> 设备，但**音量是按设备分别记忆的**——系统音量滑块只作用于"当前默认输出"。于是会出现：
-> 默认输出是蓝牙耳机、系统音量显示 70%，而界面选的内置扬声器仍停在很低的旧音量，
-> 结果**声音确实从扬声器出来了、人耳也听得见，但弱到板上麦克风收不到**，判决流照样全 0。
-> 排查时先点「③ 电平校准」看 RMS——这正是它存在的意义；确认偏低就把系统输出临时切到
-> 扬声器再调音量，或干脆断开耳机。
-
-### Q10. 板子上 `make` 报找不到 `asoundlib.h` / `-lasound`
-
-**原因**：没装 ALSA 开发库。
-**解决**：Debian/Ubuntu/树莓派/香橙派/Jetson `sudo apt install libasound2-dev`；
-Fedora `sudo dnf install alsa-lib-devel`。（运行时只需 `libasound2`，编译才需 `-dev`。）
+**解决**：`gui.m` 里选好「输出设备」（默认优先内置扬声器），然后点「③ 电平校准」看
+RMS——它就是用来定位这类问题的。偏低就把系统输出临时切到该设备再调音量，或断开耳机。
+手动跑 `bok_emit` 时没有这层保护，要自己确认系统输出在扬声器上。
 
 ---
 
-## 三、MATLAB / 模型生成
+## 三、编译与部署
 
-### Q11. `slbuild` 报 `Toolchain 'GNU GCC Embedded Linux' is not registered`
+### Q8. 板上 `make` 报找不到 `asoundlib.h` / `-lasound`
 
-**现象**（macOS / Windows 宿主上重新生成代码时）
-```
-BUILD-ERR: Toolchain 'GNU GCC Embedded Linux' is not registered.
-It must be in the Toolchain registry in order to be valid.
-```
-**原因**：`.slx` 里存着的 `Toolchain` 是原树莓派支持包留下的 **`GNU GCC Embedded Linux`**，
-这个 toolchain 只在装了对应支持包的 Linux 宿主上注册。关键在于——**即使
-`GenCodeOnly='on'`，`slbuild` 也会先校验 toolchain 再决定生成什么**，所以"我只生成代码
-不编译，应该不需要编译器"这个直觉在这里不成立；改 `GenerateMakefile='off'` 同样挡不住。
+**原因**：没装 ALSA 开发库（运行时只需 `libasound2`，编译才需 `-dev`）。
+**解决**：`sudo apt install libasound2-dev`；Fedora 系 `sudo dnf install alsa-lib-devel`。
 
-**解决**：把 toolchain 换成自动定位（本仓库入库的 `.slx` 已经改好，这条留作说明）：
+### Q9. 宿主机需要装什么？能不能一键部署？
+
+- **宿主机不需要 C 编译器**——编译在板上跑，用板子自己的 `gcc`。
+- **手动流程是教学正路**：传代码、板上 `make`、声学实测，每条命令都是要学的 Linux 过程。
+  **首次学习请按[教程](手把手部署运行教程.md)手动走一遍。**
+- 理解之后，`host/gui.m` 可以把这套流程一键化：① 自检 → ② 同步源码到板上并编译
+  → ③ 电平校准 → ④ 一键声学实测。它用 MATLAB 自带的 JSch，填 IP + 用户名 + 密码即可，
+  三个平台一致、不需要配密钥。注意它**不读 `~/.ssh/config`**，主机栏要填真实 IP。
+
+---
+
+## 四、MATLAB / 代码生成
+
+### Q10. `slbuild` 报 `Toolchain 'GNU GCC Embedded Linux' is not registered`
+
+**原因**：`.slx` 里存的 toolchain 是原树莓派支持包留下的，只在装了该支持包的 Linux 上注册。
+**即使 `GenCodeOnly='on'` 也绕不过**——`slbuild` 会先校验 toolchain 再决定生成什么。
+
+**解决**（本仓库入库的 `.slx` 已改好，这条留作说明）：
+
 ```matlab
 set_param(mdl,'Toolchain','Automatically locate an installed toolchain');
 ```
-之后 `slbuild` 会正常生成代码，只是额外打印一条
-`Unable to detect supported compiler` 的**警告**——**可以无视**：`GenCodeOnly` 下
-MATLAB 本来就不调用编译器，本工程的 C 代码是拿到板上用板子自己的 `gcc` 编的，
-**宿主机根本不需要装任何 C 编译器**（macOS 上不需要完整 Xcode，Windows 上不需要 MSVC）。
 
-> 实测：R2025b + macOS(仅 Command Line Tools)，`single_fre_rev` 9 s、
-> `chirp_rev_detect` 27 s 生成完成，产物与入库代码一致。
+之后会多打印一条 `Unable to detect supported compiler` 警告，**可以无视**：`GenCodeOnly`
+下 MATLAB 本来就不调编译器，宿主机不需要装任何 C 编译器。
 
-### Q12. `To File` 块的坑：为什么改成 Outport + 自写 mat_sink？
+### Q11. 改了模型怎么重新生成代码？
 
-在 `ert.tlc` 下：`MatFileLogging=off` 时 `To File` 会被**块归约删掉**，整个 `step()`
-变空；`MatFileLogging=on` 又会拉入 `rt_logging.c`（牵 `matrix.h` 等 MEX 头，板上无法编译）。
-**解决**：把 `To File` 换成 **Outport**，输出在模型外由板级 `mat_sink.c`（手写 MAT-v4 写入器）落盘。
+脚本（`slbuild`）和界面（APPS → Embedded Coder → `Ctrl+B`）产物一致。关键配置：
+`ert.tlc` + `HardwareBoard=None` + `GenCodeOnly=on` + `MatFileLogging=off`
++ `Device Type=ARM Cortex-A (64-bit)` + `Toolchain=Automatically locate an installed toolchain`
+（**少最后一条会报错，见 Q10**）。生成到 `simulink_model/*_ert_rtw/`，再 `make`。
+若 Inport/Outport 改了名，同步改 `src/model_glue.c` 一处。详见各实验文档。
 
-### Q13. `matlab -batch` 跑完留下僵尸进程 / 卡住
+### Q12. 为什么 `To File` 要换成 Outport？
 
-**现象**：`-batch` 退出时 ServiceHost 常卡住，留下后台 shell。
-**解决**：批处理结束后 `pkill -9 -f "MATLAB.*-batch"` 清理。建议批处理脚本里把日志
-写文件、用后台跑，跑完显式清进程。
+`ert.tlc` 下：`MatFileLogging=off` 时 `To File` 会被块归约删掉、`step()` 变空；
+`MatFileLogging=on` 又会拉入 `rt_logging.c`（牵 MEX 头，板上编不了）。
+所以改用 Outport，落盘交给板级手写的 `mat_sink.c`。
 
-### Q14. 高版本 MATLAB 的模型，能在低版本（如原工程 R2022a）打开吗？
+### Q13. 高版本 MATLAB 的模型能在低版本打开吗？
 
-**低→高安全**（向前兼容）；**高→低有风险**：用 `Simulink.exportToVersion` 导出到低版本
-可能丢信息、尤其 **Stateflow**（实验二有 15 个）。本工程统一用较高版本 MATLAB，不回退。
+**低→高安全，高→低有风险**。`Simulink.exportToVersion` 可能丢信息，尤其 Stateflow
+（实验二有 15 个）。本工程统一用较高版本，不回退。
 
-### Q15. 改了模型怎么重新生成代码？
+### Q14. MATLAB 脚本中文注释乱码
 
-见各实验文档"重新生成模型"，**脚本（`slbuild`）和 Simulink 界面（APPS→Embedded Coder→
-`Ctrl+B`）两种方式产物一致**，按习惯选。关键配置一样：`ert.tlc` + `HardwareBoard=None`
-+ `GenCodeOnly=on` + `MatFileLogging=off` + `Device Type=ARM Cortex-A (64-bit)`
-+ `Toolchain=Automatically locate an installed toolchain`（少这一条会报错，见 [Q11](#q11-slbuild-报-toolchain-gnu-gcc-embedded-linux-is-not-registered)），
-生成到 `simulink_model/*_ert_rtw/`，再 `make`。若 Inport/Outport 改了名，同步改
-`src/model_glue.c` 一处。
-
-### Q16. MATLAB 脚本中文注释乱码
-
-**原因**：原工程脚本是 GBK/UTF-8 混编。**解决**：已统一转 UTF-8（R2025b 默认 UTF-8）。
-新增/改写脚本一律存 UTF-8。
+原工程是 GBK/UTF-8 混编，现已统一转 UTF-8。新增脚本一律存 UTF-8。
 
 ---
 
-## 四、跨板排错方法论（重要）
+## 五、排错方法
 
-### Q17. 实采解不出码，怎么判断是"算法错"还是"采集错"？
+### Q15. 实采解不出码，怎么判断是"算法错"还是"采集错"？
 
-**分层隔离**，逐步缩小范围：
+分层隔离，**先验 DSP、再验声学信号、最后才怀疑实采路径**：
 
-1. **文件直喂**（`make AUDIO=file` + 干净的 `chirp_tx.raw`）→ 若 BER=0，**DSP/模型正确**，
-   排除算法/编译器问题。
-2. **录音喂文件路径**：`arecord -c1` 把声学信号录成单声道文件，再喂文件路径解码 →
-   若 BER=0，**声学信号本身是好的**，问题出在**实采的 ALSA 代码路径**（如声道/交织）。
-3. 再针对实采路径排查（声道数、设备、增益）。
+1. **文件直喂**：`make AUDIO=file` 喂干净的 `chirp_tx.raw`。BER=0 → 算法和编译没问题。
+2. **录音喂文件**：`arecord -c1` 把声学信号录成文件再喂进去。BER=0 → 声学信号本身是好的，
+   问题在实采的 ALSA 代码路径（声道/交织）。
+3. 到这一步才去查采集参数（声道数、设备名、增益）。
 
-Q3 的香橙派双声道 bug 就是这么定位出来的。**先验 DSP、再验声学信号、最后才怀疑实采路径**。
+Q3 那个双声道 bug 就是这么定位出来的。
 
 ---
 
-## 附：被移除/废弃的东西（别再找了）
+## 附：已删除的东西（别再找了）
 
-- **`:6666` TCP 文件服务器 + `client.m`**：原工程用来从板子取文件，已删除——
-  现在直接用 `scp`/FileZilla（一条命令的事，且 `client.m` 用的 `tcpip()` 已被新版 MATLAB 弃用）。
-- **生成代码里的 xcp / Pyserver 残留**：原是 External Mode 的，本工程数据通路不用它，已不参与。
-
-### Q11. GUI 填了正确 IP、用户名和密码，仍提示“网络不可达”
-
-`NoRouteToHostException` 发生在 TCP 连接阶段，还没有进行密码认证；不能据此判断密码错误。
-
-macOS 上先检查 **系统设置 → 隐私与安全性 → 本地网络** 中 MATLAB 的权限。
-但开关显示开启不代表桌面进程一定能访问局域网；单纯重启也不保证解决。
-
-本次按用户操作路径进行了手动复现：
-
-- 在正常桌面启动的 MATLAB 命令窗口运行 `gui`，手动填 IP、用户名和密码，再点自检：失败。
-- 在同一桌面 MATLAB 内，Java TCP 和系统 `nc` 都报 `No route to host`。
-- Codex 终端可连接同一地址；命令行启动的 MATLAB 批处理可通过 JSch 登录及枚举声卡。
-- 刷新已开启的 `MATLAB_R2025b`、`MATLABWindow` 本地网络开关，并完整退出、正常重开 MATLAB，手动自检仍失败。
-
-**根因已确认**：macOS 的「本地网络」隐私限制。判据是在**点图标启动**的 MATLAB
-里跑这一段——
-
-```matlab
-s = java.net.Socket;
-try
-    s.connect(java.net.InetSocketAddress('192.168.3.82',22), 3000);
-    disp('局域网 22 端口: OK'); s.close();
-catch e
-    disp(['局域网 22 端口: 失败 -> ' e.message]);
-end
-try, webread('https://www.mathworks.com','Timeout',8); disp('公网: OK');
-catch, disp('公网: 失败'); end
-```
-
-实测结果是 **局域网失败（No route to host）+ 公网 OK**。该限制的特征正是只挡
-局域网、不挡公网，只有它能解释这个组合；与 IP、密码、JSch 都无关。
-
-**为什么终端启动就能连**：这类授权是按 **责任进程（responsible process）** 归属的。
-从 Finder/Dock 启动时责任进程就是 MATLAB 自己；从终端启动时责任进程是终端，
-于是继承终端已有的局域网授权。环境变量 `__CFBundleIdentifier` 记录的就是这个
-责任进程——在终端里启动的 MATLAB 中它是终端 App 的标识，点图标启动则是
-`com.mathworks.matlab`。`gui.m` 已据此在连不上时直接点破是哪种情况。
-
-**为什么把开关打开也没用**：MATLAB 的代码签名 Identifier 是 `MATLAB`（`codesign -dv`
-可验证），与 bundle 标识 `com.mathworks.matlab` 不一致，而隐私授权按代码签名身份
-匹配，于是出现"设置里开关是开的、进程照样被挡"。
-
-**绕法**（按省事程度）：
-
-1. 在终端执行 `/Applications/MATLAB_R2025b.app/bin/matlab -desktop` 启动 MATLAB 桌面；
-   仓库 `tools/start_matlab_macos.command` 把这条命令包成了双击启动（双击 `.command`
-   会经由终端，责任进程即为终端）。
-2. `tccutil reset LocalNetwork com.mathworks.matlab` 后从 Finder 启动、重新触发授权弹窗。
-3. 上条无效时（很可能，因为授权按签名标识 `MATLAB` 存储）：`tccutil reset LocalNetwork` 全量重置。
-
-GUI 仍使用 JSch + SFTP，不读取 SSH 配置里的别名。
+- **`:6666` TCP 文件服务器 + `client.m`**：用 `scp` 替代（`tcpip()` 也已被新版 MATLAB 弃用）。
+- **生成代码里的 xcp / Pyserver 残留**：原属 External Mode，本工程数据通路不用。

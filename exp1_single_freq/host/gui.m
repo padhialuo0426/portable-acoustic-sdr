@@ -170,7 +170,7 @@ function gui()
             end
             logStep('编译', '✗', '编译失败（退出码 %d）', buildStatus);
             if contains(out, 'asoundlib.h') || contains(out, '-lasound')
-                logf('  板上缺 ALSA 开发库（见 Q&A Q10）');
+                logf('  板上缺 ALSA 开发库（见 Q&A Q8）');
             end
             tail_ = strsplit(strtrim(out), newline);
             for i = max(1, numel(tail_)-4):numel(tail_)
@@ -356,7 +356,7 @@ function gui()
         if isDead
             logStep('数据检查', '✗', '板上采到的全是 0，麦克风没收到信号');
             logf('  常见原因：选中输出设备的音量过低（系统音量只作用于默认输出）、');
-            logf('  输出设备选错、麦克风没接好。先用「③ 电平校准」看 RMS（见 Q&A Q9/Q4）');
+            logf('  输出设备选错、麦克风没接好。先用「③ 电平校准」看 RMS（见 Q&A Q7/Q4）');
         end
     end
 
@@ -690,7 +690,7 @@ function gui()
             s = ['——这个 MATLAB 是从 Finder/Dock 启动的，几乎可以确定是 macOS' ...
                  '「本地网络」隐私限制：它只挡局域网、不挡公网。最省事的绕法是' ...
                  '在终端执行 matlab -desktop 启动 MATLAB（授权按责任进程归属，' ...
-                 '终端启动即可继承）。详见 Q&A Q11'];
+                 '终端启动即可继承）。'];
         else
             s = '——检查板子地址是否填对、板子与本机是否同网段';
         end
