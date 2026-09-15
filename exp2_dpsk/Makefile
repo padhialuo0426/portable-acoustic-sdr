@@ -1,10 +1,10 @@
 # ============================================================================
-#  实验二 · 线性调频(chirp)扩频通信接收端 —— 跨平台构建
+#  实验二 · DPSK 差分相移键控接收端 —— 跨平台构建
 #  完全不依赖 MathWorks 硬件支持包，只需 gcc + libasound。
 #  共享底层(音频/MAT)在 ../common，本实验专属(模型/胶水/main)在本目录。
 #
 #  两个独立开关：
-#    MODEL = real (默认) | mock      real=编译 simulink_model/ 下的多速率生成代码
+#    MODEL = real (默认) | mock      real=编译 simulink_model/ 下的 Simulink 生成代码
 #    AUDIO = alsa (默认) | null      null=合成音频(无需声卡/ALSA)
 #
 #    make                真实模型 + ALSA        ← 板上部署
@@ -19,7 +19,7 @@ CFLAGS  ?= -O2 -Wall -Wextra -std=c11
 CFLAGS  += -D_GNU_SOURCE
 
 COMMON      := ../common
-MODEL_DIR   ?= simulink_model/chirp_rev_detect_ert_rtw
+MODEL_DIR   ?= simulink_model/dpsk_receive_ert_rtw
 SHAREDUTILS := $(wildcard simulink_model/slprj/ert/_sharedutils)
 
 CFLAGS  += -Iinclude -I$(COMMON)/include
@@ -33,7 +33,7 @@ ifdef MOCK
 endif
 
 BUILD   := build
-TARGET  := $(BUILD)/chirp_rx
+TARGET  := $(BUILD)/dpsk_rx
 SRCS    := src/main.c src/model_glue.c $(COMMON)/src/mat_sink.c
 
 ifeq ($(MODEL),mock)

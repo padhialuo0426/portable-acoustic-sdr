@@ -1,7 +1,7 @@
 function gui()
-%GUI  实验二 · 线性调频(chirp)扩频通信 —— 一键声学实测界面
+%GUI  实验三 · 线性调频(chirp)扩频通信 —— 一键声学实测界面
 %
-%   用法：cd 到本文件所在目录(exp2_chirp/host)后直接运行 gui
+%   用法：cd 到本文件所在目录(exp3_chirp/host)后直接运行 gui
 %
 %   把「手把手部署运行教程」第 4 节的动作串成一次点击：
 %     板上启动 chirp_rx 采集 → 宿主机扬声器播放 chirp 信号 → 等采集窗口跑完
@@ -28,7 +28,7 @@ function gui()
     A.GUARD = 5;
 
     %% ------------------------- 界面骨架 -------------------------
-    fig = uifigure('Name','实验二 · chirp 扩频 —— 一键声学实测', ...
+    fig = uifigure('Name','实验三 · chirp 扩频 —— 一键声学实测', ...
                    'Position',[80 80 1020 660]);
     root = uigridlayout(fig,[1 2]);
     root.ColumnWidth = {340,'1x'};
@@ -322,7 +322,7 @@ function gui()
         A.berTxt.Text = sprintf('BER = %d/%d = %.4f', round(ber*NN*MM), NN*MM, ber);
         if ber == 0
             A.berTxt.FontColor = [0 0.5 0];
-            logStep('BER', '✓', '0/%d，实验二通过', NN*MM);
+            logStep('BER', '✓', '0/%d，实验三通过', NN*MM);
         else
             A.berTxt.FontColor = [0.8 0 0];
             logStep('BER', '△', '%.4f 有误码，检查电平/环境噪声', ber);

@@ -1,5 +1,5 @@
 /*
- * main.c ── 实验二(chirp 扩频通信) 可移植接收端运行时（脱离支持包）
+ * main.c ── 实验三(chirp 扩频通信) 可移植接收端运行时（脱离支持包）
  *
  * 流程：ALSA 采集 800 样本/帧(10Hz) → 去交织喂模型 → model_step_frame()
  *       (step1 + 800×step0) → 取标量 out_data → 写 chirp5.mat(toFileData5)。

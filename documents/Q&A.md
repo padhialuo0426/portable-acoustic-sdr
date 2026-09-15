@@ -123,7 +123,7 @@ set_param(mdl,'Toolchain','Automatically locate an installed toolchain');
 ### Q13. 高版本 MATLAB 的模型能在低版本打开吗？
 
 **低→高安全，高→低有风险**。`Simulink.exportToVersion` 可能丢信息，尤其 Stateflow
-（实验二有 15 个）。本工程统一用较高版本，不回退。
+（实验三有 15 个）。本工程统一用较高版本，不回退。
 
 ### Q14. MATLAB 脚本中文注释乱码
 

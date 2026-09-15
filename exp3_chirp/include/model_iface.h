@@ -1,5 +1,5 @@
 /*
- * model_iface.h ── 实验二(chirp扩频) 板级运行时 <-> Simulink 生成代码 契约
+ * model_iface.h ── 实验三(chirp扩频) 板级运行时 <-> Simulink 生成代码 契约
  *
  * 与实验一不同点：chirp 模型是【多速率】的——
  *   step0 @ 8000Hz：逐样本处理（chirp 匹配滤波/相关）

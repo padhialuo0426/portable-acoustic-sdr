@@ -1,4 +1,4 @@
-# 实验二 · 线性调频(chirp)扩频通信
+# 实验三 · 线性调频(chirp)扩频通信
 
 把一张 1-bit 图片当基带信息，用 BOK（二进制正交键控）把每个比特调制成上扫/下扫
 chirp，经声音载波（1kHz）扬声器发射；开发板麦克风采集，板上做匹配滤波/相关检测，
@@ -44,7 +44,7 @@ flowchart TD
 ## 目录与文件逐一说明
 
 ```
-exp2_chirp/
+exp3_chirp/
 ├── Makefile           构建（MODEL/AUDIO 开关）
 ├── src/  include/      板级运行时 + 契约
 ├── simulink_model/    多速率模型 + 生成的 C 代码
@@ -146,7 +146,7 @@ exp2_chirp/
 ### 方式 A：脚本（`slbuild`，可批处理）
 
 ```matlab
-cd <exp2_chirp/simulink_model>
+cd <exp3_chirp/simulink_model>
 load_system('chirp_rev_detect')
 % …如需改算法在此修改…
 set_param('chirp_rev_detect','SystemTargetFile','ert.tlc');
@@ -186,7 +186,7 @@ GUI 方式就是把上面 `set_param` + `slbuild` 用菜单点出来，产物完
 ## 构建与运行
 
 ```bash
-cd exp2_chirp
+cd exp3_chirp
 make                                      # 真实模型 + ALSA（需 libasound2-dev）
 make AUDIO=file                           # 真实模型 + 文件输入（无噪声测 DSP）
 
