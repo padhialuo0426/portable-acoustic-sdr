@@ -70,8 +70,7 @@ exp2_dpsk/
 
 | 文件 | 作用 |
 |---|---|
-| `dpsk_receive.slx` | 接收模型：带通滤波 → 匹配滤波 → 码元同步 → 抽样判决。 |
-| `dpsk_receive_ert_rtw/*.c/.h` | 生成的纯算法 C（零支持包/零 rt_logging）。 |
+| `board/dpsk_receive_ert_rtw/*.c/.h` | 生成的纯算法 C（零支持包/零 rt_logging）。 |
 
 **模型接口**（`board/model_glue.c` 按这几个名字取值，改了要同步改那里）：
 
@@ -123,13 +122,14 @@ exp2_dpsk/
 
 | 文件 | 作用 | 关键数据 |
 |---|---|---|
+| `dpsk_receive.slx` | 接收模型：带通滤波 → 匹配滤波 → 码元同步 → 抽样判决。 生成代码落在 `../board/`，见下面「重新生成模型」。 | — |
 | `dpsk_emit.m` | 发射：读图（顶部 `img_name` 可切换，默认 `ren512b.bmp`）→ 差分编码 → 成形 → 调制 → `sound()` 播放 | 写 `info_all.mat` |
 | `dpsk_rev.m` | 解码：读 `dpsk5.mat` 帧同步/判决/BER/`imshow` 还原 | 读 `dpsk5.mat` + `info_all.mat`；`img_name` 须与发送一致 |
 | `gui.m` | **一键声学实测图形界面**（可选）：自检（连接 + 枚举采集设备）→ 同步源码到板上并编译 → 电平校准 → 板上启动采集/本机放音/取回/解码一次点完。见[手把手教程 4.5](手把手部署运行教程.md)。 |
 | `setup_paths.m` | 把脚本/图片/模型目录加入 MATLAB 路径 | — |
 | `sample_data/` | 一份**真实声学采集**的样例 `dpsk5.mat`（发的是 `ren512b.bmp`），无需板子即可离线试解码 | BER≈0.008（4/512），**非 0 属正常**——这是带信道噪声的真实录音 |
 
-### `host/` — 板上 Python 实现（与上面 `.m` 同名配对）
+### `board/py/` — 板上 Python 实现（与上面 `.m` 同名配对）
 
 **这几个脚本是在开发板上跑的**（板子只要有 python3，不需要 MATLAB）：
 它们读写的是板上的工作目录、打印的是板上的 `./build/…` 命令。
@@ -191,16 +191,10 @@ python3 board/py/dpsk_rev.py $IMG             # 帧同步 + BER + 还原图像
 
 ```matlab
 R = '<仓库根目录>';
-% .slx 在 host/，生成的 C 要落到 board/，所以显式指定生成目录。
-% 注意 CodeGenFolder 只能指定**父目录**，末级 dpsk_receive_ert_rtw 这个
-% 名字由「模型名+目标」拼出来，改不了。
-Simulink.fileGenControl('set', ...
-    'CodeGenFolder', fullfile(R,'exp2_dpsk','board'), ...
-    'CacheFolder',   fullfile(R,'exp2_dpsk','board'), 'createDir', true);
-
-% 当前目录里若已有同名生成目录，Simulink 会直接拒绝构建，
-% 所以从一个空目录跑，靠 addpath 找模型。
-cd(tempdir);  addpath(fullfile(R,'exp2_dpsk','host'));
+% ★ 代码生成到哪，由 MATLAB 的**当前文件夹**决定（Simulink 的「代码生成
+%   文件夹」默认就是当前文件夹）。先 cd 到 board/，产物自然落在这里。
+cd(fullfile(R,'exp2_dpsk','board'));
+addpath(fullfile(R,'exp2_dpsk','host'));     % .slx 在 host/，加进路径才找得到
 load_system('dpsk_receive')
 % …如需改算法在此修改…
 set_param('dpsk_receive','SystemTargetFile','ert.tlc');
@@ -215,7 +209,12 @@ slbuild('dpsk_receive');     % 生成到 board/dpsk_receive_ert_rtw/
 
 ### 方式 B：Simulink 界面（GUI，更直观）
 
-打开 `dpsk_receive.slx` → **APPS → Embedded Coder** → `Ctrl+E` 按上面的参数对齐
+> ⚠️ **动手前先把 MATLAB 的当前文件夹切到 `exp2_dpsk/board/`**（左侧地址栏，或命令行 `cd`）。
+> 代码生成到哪，由**当前文件夹**决定——Simulink 的「代码生成文件夹」默认就是它。
+> 不切的话代码会落到你当时所在的目录（比如 `exp2_dpsk/` 根下），`make` 编的还是
+> `board/` 里的旧代码。
+
+打开 `host/dpsk_receive.slx` → **APPS → Embedded Coder** → `Ctrl+E` 按上面的参数对齐
 （与[实验三文档](实验三_chirp扩频.md)的配置表一致）→ `Ctrl+B` 生成。
 
 生成后若 Inport/Outport 名字变了，同步改 `board/model_glue.c` 一处即可。

@@ -70,8 +70,7 @@ exp3_chirp/
 
 | 文件 | 作用 |
 |---|---|
-| `chirp_rev_detect.slx` | 接收模型：LFM 相关检测（含 15 个 Stateflow，**多速率**）。 |
-| `chirp_rev_detect_ert_rtw/*.c/.h` | 生成的纯算法 C（零支持包/零 rt_logging）。 |
+| `board/chirp_rev_detect_ert_rtw/*.c/.h` | 生成的纯算法 C（零支持包/零 rt_logging）。 |
 
 **模型接口**（`board/model_glue.c` 按这几个名字取值，改了要同步改那里）：
 
@@ -122,6 +121,7 @@ exp3_chirp/
 
 | 文件 | 作用 | 关键数据 |
 |---|---|---|
+| `chirp_rev_detect.slx` | 接收模型：LFM 相关检测（含 15 个 Stateflow，**多速率**）。 生成代码落在 `../board/`，见下面「重新生成模型」。 | — |
 | `bok_emit.m` | 发射：读图（顶部 `img_name` 可切换，默认 `ren128b.bmp`）→ 自适应组帧 → `sound()` 播放 | 写 `info_all.mat` |
 | `bok_rev.m` | 解码：读 `chirp5.mat` 帧同步/硬判决/BER/`imshow` 还原 | 读 `chirp5.mat` + `info_all.mat`；`img_name` 须与发送一致 |
 | `gui.m` | **一键声学实测图形界面**（可选）：自检（连接 + 枚举采集设备）→ 同步源码到板上并编译 → 电平校准 → 板上启动采集/本机放音/取回/解码一次点完。见[手把手教程 4.5](手把手部署运行教程.md)。 |
@@ -131,7 +131,7 @@ exp3_chirp/
 
 > 路径已全部改为相对脚本自身定位（`here=fileparts(mfilename('fullpath'))`），换目录不会找不到文件；编码统一 UTF-8。
 
-### `host/` — 板上 Python 实现（与上面 `.m` 同名配对）
+### `board/py/` — 板上 Python 实现（与上面 `.m` 同名配对）
 
 **这几个脚本是在开发板上跑的**（板子只要有 python3，不需要 MATLAB）：
 它们读写的是板上的工作目录、打印的是板上的 `./build/…` 命令。
@@ -158,16 +158,10 @@ exp3_chirp/
 
 ```matlab
 R = '<仓库根目录>';
-% .slx 在 host/，生成的 C 要落到 board/，所以显式指定生成目录。
-% 注意 CodeGenFolder 只能指定**父目录**，末级 chirp_rev_detect_ert_rtw 这个
-% 名字由「模型名+目标」拼出来，改不了。
-Simulink.fileGenControl('set', ...
-    'CodeGenFolder', fullfile(R,'exp3_chirp','board'), ...
-    'CacheFolder',   fullfile(R,'exp3_chirp','board'), 'createDir', true);
-
-% 当前目录里若已有同名生成目录，Simulink 会直接拒绝构建，
-% 所以从一个空目录跑，靠 addpath 找模型。
-cd(tempdir);  addpath(fullfile(R,'exp3_chirp','host'));
+% ★ 代码生成到哪，由 MATLAB 的**当前文件夹**决定（Simulink 的「代码生成
+%   文件夹」默认就是当前文件夹）。先 cd 到 board/，产物自然落在这里。
+cd(fullfile(R,'exp3_chirp','board'));
+addpath(fullfile(R,'exp3_chirp','host'));     % .slx 在 host/，加进路径才找得到
 load_system('chirp_rev_detect')
 % …如需改算法在此修改…
 set_param('chirp_rev_detect','SystemTargetFile','ert.tlc');
@@ -182,9 +176,14 @@ slbuild('chirp_rev_detect');     % 生成到 board/chirp_rev_detect_ert_rtw/
 
 ### 方式 B：Simulink 界面（GUI，更直观）
 
+> ⚠️ **动手前先把 MATLAB 的当前文件夹切到 `exp3_chirp/board/`**（左侧地址栏，或命令行 `cd`）。
+> 代码生成到哪，由**当前文件夹**决定——Simulink 的「代码生成文件夹」默认就是它。
+> 不切的话代码会落到你当时所在的目录（比如 `exp3_chirp/` 根下），`make` 编的还是
+> `board/` 里的旧代码。
+
 GUI 方式就是把上面 `set_param` + `slbuild` 用菜单点出来，产物完全一致。
 
-1. 打开 `chirp_rev_detect.slx`。
+1. 打开 `host/chirp_rev_detect.slx`。
 2. 顶部 **APPS → Embedded Coder**，工具条出现 **C CODE** 选项卡。
 3. `Ctrl+E` 打开 **Configuration Parameters**，对齐下表（与方式 A 一一对应）：
 
