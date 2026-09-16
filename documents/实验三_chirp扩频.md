@@ -25,7 +25,8 @@ flowchart TB
   `cos(2π·fc·t + π·μ·k·t²)`，fc=1000Hz，B=200Hz，T=0.1s/符号，k=B/T，fs=8000Hz，
   每符号 800 样本。
 - **接收检测**：用 μ=+1 与 μ=−1 两个匹配滤波器相关，比 `|u1|` vs `|u2|` 出 ±1 判决。
-- **板端只输出判决流**，帧同步/解码/BER/还原都在 PC 端（`bok_rev.m`）。
+- **板端只输出判决流**，帧同步/解码/BER/还原交给 `bok_rev`——
+  PC 上用 MATLAB 版 `bok_rev.m`，也可以直接在板上跑 Python 版 `bok_rev.py`。
 
 ## 数据流
 
@@ -49,7 +50,7 @@ exp3_chirp/
 ├── src/  include/      板级运行时 + 契约
 ├── simulink_model/    多速率模型 + 生成的 C 代码
 ├── baseband_images/   基带图片（待传信息）
-└── host/              PC 端 MATLAB 脚本：发射 / 解码 / 仿真 / 一键界面
+└── host/              PC 端 MATLAB 发射/解码/仿真 + 板上 Python 实现(免 MATLAB)
 ```
 
 ### `src/` + `include/`
@@ -112,7 +113,7 @@ exp3_chirp/
 
 两段 m 序列起点间距 = `L+15`，解码端据此自适应定位、并按真实宽高还原点阵。
 
-### `host/` — PC 端脚本（发射/解码/仿真）
+### `host/` — PC 端 MATLAB 脚本（发射/解码/仿真）
 
 | 文件 | 作用 | 关键数据 |
 |---|---|---|
@@ -124,6 +125,17 @@ exp3_chirp/
 | `sample_data/` | 一组真实样例 `chirp5.mat`+`info_all.mat`，可离线试解码 | — |
 
 > 路径已全部改为相对脚本自身定位（`here=fileparts(mfilename('fullpath'))`），换目录不会找不到文件；编码统一 UTF-8。
+
+### `host/` — 板上 Python 实现（与上面 `.m` 同名配对）
+
+**这几个脚本是在开发板上跑的**（板子只要有 python3，不需要 MATLAB）：
+它们读写的是板上的工作目录、打印的是板上的 `./build/…` 命令。
+没有 MATLAB 的时候，用它们可以在板子上独立把整个实验跑完。
+
+| 文件 | 作用 |
+|---|---|
+| `bok_emit.py` | 与 `bok_emit.m` 等价：读任意 1-bit BMP（自动宽高、自适应组帧）→ 输出 `chirp_tx.raw/.wav/tx_truth.txt`，并打印声学采集建议 `-t` 秒数。 |
+| `bok_rev.py` | 与 `bok_rev.m` 等价：从同一 BMP 读尺寸 → 帧同步 → 硬判决 → BER → ASCII 还原图。 |
 
 ## 任意图片支持
 
@@ -190,22 +202,26 @@ arecord -l                                # 先看麦克风是 card 几
 
 产出 `chirp5.mat`（变量 `toFileData5`，2×N：第1行时间，第2行判决值），喂 `bok_rev.m`。
 
-### 标准流程（声学实测）
+### 在板上独立复现（不需要 MATLAB）
 
-把 `host/bok_emit.m` 与 `bok_rev.m` 顶部 `img_name` 改成同一张图，然后：
-板上先跑 `chirp_rx` 采集（`-t` 用 `bok_emit` 打印的建议值）、PC 上 `bok_emit` 发射、
-`scp` 取回 `chirp5.mat` 到 `host/`、`bok_rev` 解码算 BER。
-分步操作见[手把手教程第 5 节](手把手部署运行教程.md)；`host/gui.m` 可把这套流程一键化。
-离线试解码：把 `sample_data/` 的样例拷到 `host/` 直接跑 `bok_rev`。
-
-### 文件直喂（不经过扬声器/麦克风，纯测 DSP 与编译）
-
-`bok_emit.m` 每次运行都会在 `exp3_chirp/` 下顺带写一个 `chirp_tx.raw`
-（单声道 int16，与 `sound()` 播放的是同一段波形）。把它拷到板上：
+以下命令**全部在开发板上执行**，`cd` 到板上的 `exp3_chirp/` 目录：
 
 ```bash
+IMG=baseband_images/lzu2048b.bmp          # 换任意图片；缺省 ren128b.bmp
+
+python3 host/bok_emit.py $IMG             # 生成发射信号 + 打印建议 -t
+
+# A) 文件直喂（无声学噪声，纯测 DSP/解码）
 make AUDIO=file && ./build/chirp_rx -d chirp_tx.raw
+
+# B) 真实声学（扬声器播放 + 麦克风采集；-t 用建议值）
+make && (aplay -q chirp_tx.wav &) ; ./build/chirp_rx -d plughw:2,0 -t 24
+
+python3 host/bok_rev.py $IMG              # 帧同步 + BER + 还原图像
 ```
 
-产出的 `chirp5.mat` 照常用 `bok_rev` 解码，**应得 BER=0**。这条链路不含信道噪声，
-用来把"算法/编译错"和"采集错"分开（见 [Q&A Q15](Q&A.md)）。
+### 在 PC 上用 MATLAB 跑（效果等价）
+
+把 `host/bok_emit.m` 与 `bok_rev.m` 顶部 `img_name` 改成同一张图；`bok_emit` 发射、
+板上 `chirp_rx` 采集得 `chirp5.mat`、`scp` 回 `host/` 后 `bok_rev` 解码。
+离线试解码：把 `sample_data/` 的样例拷到 `host/` 直接跑 `bok_rev`。

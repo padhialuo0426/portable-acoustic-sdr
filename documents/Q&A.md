@@ -35,13 +35,12 @@ arecord -l                      # 看麦克风是 card 几（device 号通常 0�
 **排查**：对着话筒说话，看 RMS 是否跳到几百。
 
 ```bash
-arecord -D plughw:2,0 -f S16_LE -r 8000 -c 1 -d 1 /tmp/m.raw
-od -A n -t d2 -v /tmp/m.raw \
-  | awk '{for(i=1;i<=NF;i++){s+=$i*$i;a=$i<0?-$i:$i;if(a>m)m=a;n++}}
-         END{printf "RMS=%.0f 峰值=%d\n",sqrt(s/n),m}'
+arecord -D plughw:2,0 -f S16_LE -r 8000 -c 1 -d 1 /tmp/m.wav
+python3 -c "import wave,struct,math;w=wave.open(open('/tmp/m.wav','rb'));n=w.getnframes();s=struct.unpack('<%dh'%n,w.readframes(n));print('RMS=%.0f 峰值=%d'%(math.sqrt(sum(v*v for v in s)/n),max(abs(v) for v in s)))"
 ```
 
-也可以直接用 `host/gui.m` 的「③ 电平校准」，它做的就是这件事。
+（以上两条都在**板子上**执行。）在 PC 端也可以直接用 `host/gui.m` 的「③ 电平校准」，
+它做的就是这件事。
 
 ### Q5. 信号过载，峰值顶到 32767 解不出
 
@@ -55,8 +54,9 @@ amixer -c <card> sset <控件> 70% cap      # 控件名因声卡而异，先 ami
 ### Q6. 大图解不出，小图却正常
 
 **原因**：采集时长 `-t` 不够，帧尾还没采到就停了。
-**解决**：`dpsk_emit`(实验二) / `bok_emit`(实验三) 运行时会打印建议的 `-t` 秒数，
-按它给足（实验三 2048 位的图约需 `-t 217`；实验二同样大小约需 `-t 28`）。
+**解决**：发射脚本会打印建议的 `-t` 秒数——PC 上的 `dpsk_emit`/`bok_emit`(MATLAB)
+和板上的 `dpsk_emit.py`/`bok_emit.py` 都会打印，按它给足即可
+（实验三 2048 位的图约需 `-t 217`；实验二同样大小约需 `-t 28`）。
 
 ---
 

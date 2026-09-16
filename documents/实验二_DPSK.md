@@ -25,7 +25,8 @@ flowchart TB
   *变化* 里而不是绝对相位上，所以接收端不需要恢复绝对相位基准。
 - **成形**：平方根升余弦（β=0.5，每码元 80 点），收发各一半、级联构成升余弦，
   在抽样时刻无码间串扰。
-- **板端只输出判决流**，帧同步/解码/BER/还原都在 PC 端（`dpsk_rev.m`）。
+- **板端只输出判决流**，帧同步/解码/BER/还原交给 `dpsk_rev`——
+  PC 上用 MATLAB 版 `dpsk_rev.m`，也可以直接在板上跑 Python 版 `dpsk_rev.py`。
 
 ## 数据流
 
@@ -49,7 +50,7 @@ exp2_dpsk/
 ├── src/  include/     板级运行时 + 契约
 ├── simulink_model/    接收模型 + 生成的 C 代码
 ├── baseband_images/   基带图片（待传信息）
-└── host/              PC 端 MATLAB 脚本：发射 / 解码 / 一键界面
+└── host/              PC 端 MATLAB 发射/解码 + 板上 Python 实现(免 MATLAB)
 ```
 
 ### `src/` + `include/`
@@ -113,7 +114,7 @@ exp2_dpsk/
 > （= 40 个码元）的流水延迟。保护码元若少于这个数，**帧尾 m 序列还没从管线里
 > 流出来信号就结束了**，解码端会报「未找到相距 L+15 的帧头/帧尾」。
 
-### `host/` — PC 端脚本
+### `host/` — PC 端 MATLAB 脚本
 
 | 文件 | 作用 | 关键数据 |
 |---|---|---|
@@ -122,6 +123,17 @@ exp2_dpsk/
 | `gui.m` | **一键声学实测图形界面**（可选）：自检（连接 + 枚举采集设备）→ 同步源码到板上并编译 → 电平校准 → 板上启动采集/本机放音/取回/解码一次点完。见[手把手教程 4.5](手把手部署运行教程.md)。 |
 | `setup_paths.m` | 把脚本/图片/模型目录加入 MATLAB 路径 | — |
 | `sample_data/` | 一份**真实声学采集**的样例 `dpsk5.mat`（发的是 `ren512b.bmp`），无需板子即可离线试解码 | BER≈0.008（4/512），**非 0 属正常**——这是带信道噪声的真实录音 |
+
+### `host/` — 板上 Python 实现（与上面 `.m` 同名配对）
+
+**这几个脚本是在开发板上跑的**（板子只要有 python3，不需要 MATLAB）：
+它们读写的是板上的工作目录、打印的是板上的 `./build/…` 命令。
+没有 MATLAB 的时候，用它们可以在板子上独立把整个实验跑完。
+
+| 文件 | 作用 |
+|---|---|
+| `dpsk_emit.py` | 与 `dpsk_emit.m` 等价：读任意 1-bit BMP（自动宽高、自适应组帧）→ 输出 `dpsk_tx.raw/.wav/tx_truth.txt`，并打印声学采集建议 `-t` 秒数。 |
+| `dpsk_rev.py` | 与 `dpsk_rev.m` 等价：从同一 BMP 读尺寸 → 帧同步 → 判决 → BER → ASCII 还原图。 |
 
 ## 任意图片支持
 
@@ -143,24 +155,28 @@ arecord -l                                # 先看麦克风是 card 几
 
 产出 `dpsk5.mat`（变量 `toFileData5`，2×N：第1行时间，第2行判决值），喂 `dpsk_rev.m`。
 
-### 标准流程（声学实测）
+### 在板上独立复现（不需要 MATLAB）
 
-把 `host/dpsk_emit.m` 与 `dpsk_rev.m` 顶部 `img_name` 改成同一张图，然后：
-板上先跑 `dpsk_rx` 采集（`-t` 用 `dpsk_emit` 打印的建议值）、PC 上 `dpsk_emit` 发射、
-`scp` 取回 `dpsk5.mat` 到 `host/`、`dpsk_rev` 解码算 BER。
-分步操作见[手把手教程第 4 节](手把手部署运行教程.md)；`host/gui.m` 可把这套流程一键化。
-
-### 文件直喂（不经过扬声器/麦克风，纯测 DSP 与编译）
-
-`dpsk_emit.m` 每次运行都会在 `exp2_dpsk/` 下顺带写一个 `dpsk_tx.raw`
-（单声道 int16，与 `sound()` 播放的是同一段波形）。把它拷到板上：
+以下命令**全部在开发板上执行**，`cd` 到板上的 `exp2_dpsk/` 目录：
 
 ```bash
+IMG=baseband_images/ren512b.bmp           # 换任意图片；缺省即此张
+
+python3 host/dpsk_emit.py $IMG            # 生成发射信号 + 打印建议 -t
+
+# A) 文件直喂（无声学噪声，纯测 DSP/解码）
 make AUDIO=file && ./build/dpsk_rx -d dpsk_tx.raw
+
+# B) 真实声学（扬声器播放 + 麦克风采集；-t 用建议值）
+make && (aplay -q dpsk_tx.wav &) ; ./build/dpsk_rx -d plughw:2,0 -t 13
+
+python3 host/dpsk_rev.py $IMG             # 帧同步 + BER + 还原图像
 ```
 
-产出的 `dpsk5.mat` 照常用 `dpsk_rev` 解码，**应得 BER=0**。这条链路不含信道噪声，
-用来把"算法/编译错"和"采集错"分开（见 [Q&A Q15](Q&A.md)）。
+### 在 PC 上用 MATLAB 跑（效果等价）
+
+把 `host/dpsk_emit.m` 与 `dpsk_rev.m` 顶部 `img_name` 改成同一张图；`dpsk_emit` 发射、
+板上 `dpsk_rx` 采集、`scp` 取回 `dpsk5.mat` 到 `host/`、`dpsk_rev` 解码。
 
 ## 重新生成模型（改算法后）
 

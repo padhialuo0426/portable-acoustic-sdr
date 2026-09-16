@@ -77,15 +77,6 @@ dpsk = dpsk / max(abs(dpsk));      % 归一化，避免 sound() 削顶
 %% 产生声音 %%
 fprintf('发送 %s  %dx%d=%d 位  码元数=%d  时长=%.1fs\n', ...
         img_name, MM, NN, L, code, numel(dpsk)/fs);
-fprintf('板上采集建议: ./build/dpsk_rx -d plughw:2,0 -t %d\n', ceil(numel(dpsk)/fs)+6);
+% 板上要先起采集再放音，采集窗口得盖过信号时长，这里直接把建议的 -t 算好
+fprintf('板上先执行: ./build/dpsk_rx -d plughw:X,0 -t %d\n', ceil(numel(dpsk)/fs)+6);
 sound(dpsk, fs)
-
-%% 顺带导出 raw，供板上「文件直喂」无噪声验证 %%
-% dpsk_tx.raw 是单声道 int16，与 sound() 播放的是同一段波形。拷到板上后：
-%   make AUDIO=file && ./build/dpsk_rx -d dpsk_tx.raw
-% 这条链路不经过扬声器和麦克风，用来把「算法/编译错」和「采集错」分开（见 Q&A Q15）。
-raw_path = fullfile(here,'..','dpsk_tx.raw');
-raw = int16(round(dpsk * 10000));          % dpsk 已归一化到 ±1
-fid = fopen(raw_path, 'wb');
-fwrite(fid, raw, 'int16');  fclose(fid);
-fprintf('已写 dpsk_tx.raw（%d 样本，供 make AUDIO=file 文件直喂）\n', numel(raw));
