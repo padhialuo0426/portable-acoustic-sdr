@@ -37,18 +37,17 @@ arecord -l                           # 看麦克风是 card 几
 ├── exp2_dpsk/           实验二 · DPSK 差分相移键控
 └── exp3_chirp/          实验三 · chirp 扩频通信
 
-每个实验目录固定分三块——「板上的 / PC 上的 / 两边共用的」：
+每个实验目录是扁平的，只有 `src/`（手写 C）和 `py/`（板上脚本）两个子目录，
+`.slx` 与各 `.m` 脚本都在根下：
 
     exp2_dpsk/
     ├── Makefile             板上构建入口
-    ├── board/               板上要的一切（外加生成它的 Simulink 模型）
-    │   ├── dpsk_receive.slx     模型：只在 PC 上打开，不上板
-    │   ├── main.c  model_glue.c  model_iface.h     手写
-    │   ├── *_ert_rtw/       模型生成的 C（可整个删掉重生成）
-    │   └── py/              免 MATLAB 的板上发射/解码脚本
-    ├── host/                PC 上 MATLAB 要的
-    │   ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
-    │   └── sample_data/         离线试解码用的样例
+    ├── dpsk_receive.slx         Simulink 模型（只在 PC 上打开，不上板）
+    ├── dpsk_receive_ert_rtw/    模型生成的 C（可整个删掉重生成）
+    ├── src/                 手写 C：main.c  model_glue.c  model_iface.h
+    ├── py/                  免 MATLAB 的板上发射/解码脚本
+    ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
+    ├── sample_data/         离线试解码用的样例
     └── baseband_images/     基带图片，MATLAB 与板上 py 都读它（实验一无此项）
 ```
 

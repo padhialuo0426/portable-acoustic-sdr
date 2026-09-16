@@ -1,10 +1,11 @@
 # ============================================================================
 #  实验一 · 单频信号接收端 —— 跨平台构建（树莓派 / Jetson / 香橙派 / x86）
 #  完全不依赖 MathWorks 硬件支持包，只需 gcc + libasound。
-#  共享底层(音频/MAT)在 ../common，本实验专属(main/胶水/生成代码)在 board/。
+#  共享底层(音频/MAT)在 ../common；本实验手写 C 在 src/，
+#  Simulink 生成的算法 C 在 single_fre_rev_ert_rtw/。
 #
 #  两个独立开关：
-#    MODEL = real (默认) | mock             real=编译 board/ 下的 Simulink 生成代码
+#    MODEL = real (默认) | mock             real=编译 single_fre_rev_ert_rtw/ 下的 Simulink 生成代码
 #    AUDIO = alsa (默认) | null | file      null=合成音频(无需声卡/ALSA)，file=raw 文件输入
 #
 #  常用组合：
@@ -22,10 +23,10 @@ CFLAGS  += -D_GNU_SOURCE
 
 COMMON      := ../common
 # Simulink 代码生成输出目录（重新生成后直接读取，无需拷贝）
-MODEL_DIR   ?= board/single_fre_rev_ert_rtw
-SHAREDUTILS := $(wildcard board/slprj/ert/_sharedutils)
+MODEL_DIR   ?= single_fre_rev_ert_rtw
+SHAREDUTILS := $(wildcard slprj/ert/_sharedutils)
 
-CFLAGS  += -Iboard -I$(COMMON)/include
+CFLAGS  += -Isrc -I$(COMMON)/include
 LDLIBS  := -lm
 
 MODEL   ?= real
@@ -37,7 +38,7 @@ endif
 
 BUILD   := build
 TARGET  := $(BUILD)/sdr_rx
-SRCS    := board/main.c board/model_glue.c $(COMMON)/src/mat_sink.c
+SRCS    := src/main.c src/model_glue.c $(COMMON)/src/mat_sink.c
 
 # ---- 模型来源 ----
 ifeq ($(MODEL),mock)
@@ -60,7 +61,7 @@ else
 endif
 
 # 多目录源码 -> 扁平 build/ 目标（各源文件 basename 唯一）
-VPATH := board $(COMMON)/src $(MODEL_DIR) $(SHAREDUTILS)
+VPATH := src $(COMMON)/src $(MODEL_DIR) $(SHAREDUTILS)
 OBJS  := $(addprefix $(BUILD)/,$(notdir $(SRCS:.c=.o)))
 
 .PHONY: all clean

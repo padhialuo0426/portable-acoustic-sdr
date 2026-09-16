@@ -32,7 +32,7 @@
 
 ```mermaid
 flowchart LR
-    emit["PC：host/*_emit.m<br/>生成波形 / sound() 播放"]
+    emit["PC：*_emit.m<br/>生成波形 / sound() 播放"]
     spk["PC：扬声器"]
     mic["板上：麦克风"]
     rx["开发板：接收端 C 程序<br/>ALSA 采集 → 模型 → 判决 → 写 .mat"]
@@ -42,10 +42,10 @@ flowchart LR
     rx -->|"用 scp/FileZilla 把 .mat 从 Linux 板子传回 PC"| dec
 ```
 
-- **发射端**（`host/`）：纯 PC MATLAB，用 `sound()` 经声卡播放。
-  实验二/三的 `board/py/` 下另有一套**在板上跑的** Python 脚本（`*_emit.py`/`*_rev.py`），
+- **发射端**（`*_emit.m`）：纯 PC MATLAB，用 `sound()` 经声卡播放。
+  实验二/三的 `py/` 下另有一套**在板上跑的** Python 脚本（`*_emit.py`/`*_rev.py`），
   板子只要有 python3 就能脱离 MATLAB 把整个实验跑完。
-  三个实验各有一个可选的 `host/gui.m`，把「连接/枚举采集设备 + 同步源码上板并编译 +
+  三个实验各有一个可选的 `gui.m`，把「连接/枚举采集设备 + 同步源码上板并编译 +
   电平校准 + 启动采集/放音/取回/解码」串成四次点击（手动流程仍是教学正路，
   见 [Q&A](Q&A.md) Q9）。
 - **接收端**（板上 C）：Simulink 只负责生成**纯算法 C**，音频 I/O、
@@ -64,18 +64,17 @@ flowchart LR
 ├── exp2_dpsk/           实验二 · DPSK 差分相移键控
 └── exp3_chirp/          实验三 · 线性调频(chirp)扩频通信
 
-每个实验目录固定分三块——「板上的 / PC 上的 / 两边共用的」：
+每个实验目录是扁平的，只有 `src/`（手写 C）和 `py/`（板上脚本）两个子目录，
+`.slx` 与各 `.m` 脚本都在根下：
 
     exp2_dpsk/
     ├── Makefile             板上构建入口
-    ├── board/               板上要的一切（外加生成它的 Simulink 模型）
-    │   ├── dpsk_receive.slx     模型：只在 PC 上打开，不上板
-    │   ├── main.c  model_glue.c  model_iface.h     手写
-    │   ├── *_ert_rtw/       模型生成的 C（可整个删掉重生成）
-    │   └── py/              免 MATLAB 的板上发射/解码脚本
-    ├── host/                PC 上 MATLAB 要的
-    │   ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
-    │   └── sample_data/         离线试解码用的样例
+    ├── dpsk_receive.slx         Simulink 模型（只在 PC 上打开，不上板）
+    ├── dpsk_receive_ert_rtw/    模型生成的 C（可整个删掉重生成）
+    ├── src/                 手写 C：main.c  model_glue.c  model_iface.h
+    ├── py/                  免 MATLAB 的板上发射/解码脚本
+    ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
+    ├── sample_data/         离线试解码用的样例
     └── baseband_images/     基带图片，MATLAB 与板上 py 都读它（实验一无此项）
 ```
 
@@ -89,10 +88,10 @@ flowchart LR
 | `src/audio_io_null.c` | 合成 1kHz 单音后端（无声卡机器联调，编译开关 `AUDIO=null`） |
 | `src/audio_io_file.c` | 原始 int16 文件输入后端（无噪声链路验证，`AUDIO=file`） |
 | `include/mat_sink.h`、`src/mat_sink.c` | MAT-v4 流式写入器，产出与 Simulink `To File` 同格式的 `.mat` |
-| `matlab/+asdr/` | 三个 `host/gui.m` 共用的界面骨架与板上连接层（`App` / `Board` / `ImageUI`），**跑在 PC 上，不上板** |
+| `matlab/+asdr/` | 三个 `gui.m` 共用的界面骨架与板上连接层（`App` / `Board` / `ImageUI`），**跑在 PC 上，不上板** |
 
 平台差异收敛到一个参数 `-d`；唯一耦合 Simulink 符号名的代码集中在各实验
-`board/model_glue.c`（重新生成模型后只需核对一处字段名）。
+`src/model_glue.c`（重新生成模型后只需核对一处字段名）。
 
 ## 三个实验对照
 
@@ -118,10 +117,10 @@ Fedora `sudo dnf install alsa-lib-devel`。交叉编译：`make CC=aarch64-linux
 
 ## 重新生成模型（改算法后，需 MATLAB）
 
-`.slx` 与它生成的 C 代码（都在 `board/`）已一起入库，**运行端不需要 MATLAB**。
+`.slx` 与它生成的 C 代码（`<模型名>_ert_rtw/`）已一起入库，**运行端不需要 MATLAB**。
 只有当你要改算法时才需要在 MATLAB 里重新生成：配置 `ert.tlc` + `HardwareBoard=None`
 + `GenCodeOnly` + 关 MAT 日志 + `Toolchain` 设为自动定位，`slbuild` 直接覆盖
-`board/*_ert_rtw/`，再 `make` 即可。Device Type 已设为 `ARM Cortex-A (64-bit)`。
+`<模型名>_ert_rtw/`，再 `make` 即可。Device Type 已设为 `ARM Cortex-A (64-bit)`。
 **生成代码不需要宿主机装任何 C 编译器**（编译在板上做），MATLAB 提示找不到
 supported compiler 可以无视。详细步骤见各实验文档；踩坑见 [Q&A](Q&A.md)。
 

@@ -1,10 +1,11 @@
 # ============================================================================
 #  实验二 · DPSK 差分相移键控接收端 —— 跨平台构建
 #  完全不依赖 MathWorks 硬件支持包，只需 gcc + libasound。
-#  共享底层(音频/MAT)在 ../common，本实验专属(main/胶水/生成代码)在 board/。
+#  共享底层(音频/MAT)在 ../common；本实验手写 C 在 src/，
+#  Simulink 生成的算法 C 在 dpsk_receive_ert_rtw/。
 #
 #  两个独立开关：
-#    MODEL = real (默认) | mock      real=编译 board/ 下的 Simulink 生成代码
+#    MODEL = real (默认) | mock      real=编译 dpsk_receive_ert_rtw/ 下的 Simulink 生成代码
 #    AUDIO = alsa (默认) | null      null=合成音频(无需声卡/ALSA)
 #
 #    make                真实模型 + ALSA        ← 板上部署
@@ -19,10 +20,10 @@ CFLAGS  ?= -O2 -Wall -Wextra -std=c11
 CFLAGS  += -D_GNU_SOURCE
 
 COMMON      := ../common
-MODEL_DIR   ?= board/dpsk_receive_ert_rtw
-SHAREDUTILS := $(wildcard board/slprj/ert/_sharedutils)
+MODEL_DIR   ?= dpsk_receive_ert_rtw
+SHAREDUTILS := $(wildcard slprj/ert/_sharedutils)
 
-CFLAGS  += -Iboard -I$(COMMON)/include
+CFLAGS  += -Isrc -I$(COMMON)/include
 LDLIBS  := -lm
 
 MODEL   ?= real
@@ -34,7 +35,7 @@ endif
 
 BUILD   := build
 TARGET  := $(BUILD)/dpsk_rx
-SRCS    := board/main.c board/model_glue.c $(COMMON)/src/mat_sink.c
+SRCS    := src/main.c src/model_glue.c $(COMMON)/src/mat_sink.c
 
 ifeq ($(MODEL),mock)
   CFLAGS += -DUSE_MOCK_MODEL
@@ -54,7 +55,7 @@ else
   LDLIBS += -lasound -lpthread -lrt
 endif
 
-VPATH := board $(COMMON)/src $(MODEL_DIR) $(SHAREDUTILS)
+VPATH := src $(COMMON)/src $(MODEL_DIR) $(SHAREDUTILS)
 OBJS  := $(addprefix $(BUILD)/,$(notdir $(SRCS:.c=.o)))
 
 .PHONY: all clean

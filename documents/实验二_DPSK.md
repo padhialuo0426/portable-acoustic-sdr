@@ -32,11 +32,11 @@ flowchart TB
 
 ```mermaid
 flowchart TD
-    emit["PC：host/dpsk_emit.m<br/>sound() 播放"]
+    emit["PC：dpsk_emit.m<br/>sound() 播放"]
     spk["PC：扬声器"]
     mic["板上：麦克风"]
     rx["板上：build/dpsk_rx<br/>ALSA 采集 → 模型(滤波/同步/判决) → 每码元一个判决值 → dpsk5.mat"]
-    dec["PC：host/dpsk_rev.m<br/>帧同步 → 判决 → BER → 还原图像"]
+    dec["PC：dpsk_rev.m<br/>帧同步 → 判决 → BER → 还原图像"]
 
     emit --> spk -->|"空气"| mic --> rx
     rx -->|"用 scp 命令把 dpsk5.mat 从 Linux 板子传回 PC"| dec
@@ -47,18 +47,16 @@ flowchart TD
 ```
 exp2_dpsk/
 ├── Makefile           构建入口（MODEL/AUDIO 开关）
-├── board/             板上的一切
-│   ├── dpsk_receive.slx        Simulink 模型（只在 PC 上打开）
-│   ├── main.c  model_glue.c  model_iface.h    手写运行时 + 契约
-│   ├── dpsk_receive_ert_rtw/    Simulink 生成的纯算法 C
-│   └── py/            dpsk_emit.py  dpsk_rev.py（免 MATLAB，在板上跑）
-├── host/              PC 上 MATLAB 的一切
-│   ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
-│   └── sample_data/   一份真实声学采集，可离线试解码
+├── dpsk_receive.slx        Simulink 模型（只在 PC 上打开）
+├── dpsk_receive_ert_rtw/   模型生成的纯算法 C（板上编译）
+├── src/               手写 C：main.c  model_glue.c  model_iface.h
+├── py/                dpsk_emit.py  dpsk_rev.py（免 MATLAB，在板上跑）
+├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
+├── sample_data/       一份真实声学采集，可离线试解码
 └── baseband_images/   基带图片（待传信息），MATLAB 与板上 py 都读它
 ```
 
-### `board/` — 板上运行时
+### `src/` — 板上运行时（手写 C）
 
 | 文件 | 作用 |
 |---|---|
@@ -67,13 +65,13 @@ exp2_dpsk/
 | `model_glue.c` | 耦合 Simulink 符号名的薄层：`dpsk_receive_U.AudioIn` 输入、`dpsk_receive_Y.out_data` 判决。 |
 | `model_iface.h` | 契约：`MODEL_FRAME_SAMPLES=80`、`MODEL_FRAME_RATE_HZ=100` 等，`model_step_frame()` 声明。 |
 
-### `board/dpsk_receive_ert_rtw/` — Simulink 生成的 C
+### `dpsk_receive_ert_rtw/` — Simulink 生成的 C
 
 | 文件 | 作用 |
 |---|---|
-| `board/dpsk_receive_ert_rtw/*.c/.h` | 生成的纯算法 C（零支持包/零 rt_logging）。 |
+| `dpsk_receive_ert_rtw/*.c/.h` | 生成的纯算法 C（零支持包/零 rt_logging）。 |
 
-**模型接口**（`board/model_glue.c` 按这几个名字取值，改了要同步改那里）：
+**模型接口**（`src/model_glue.c` 按这几个名字取值，改了要同步改那里）：
 
 - 输入：**Inport `AudioIn`**，`int16[160]` = 80 样本 × 2 声道，布局 `[L0..79, R0..79]`。
 - 输出：**Outport `out_data`**，标量——每个码元的判决值。注意它是**相关幅度**
@@ -119,7 +117,7 @@ exp2_dpsk/
 > （= 40 个码元）的流水延迟。保护码元若少于这个数，**帧尾 m 序列还没从管线里
 > 流出来信号就结束了**，解码端会报「未找到相距 L+15 的帧头/帧尾」。
 
-### `host/` — PC 端 MATLAB 脚本
+### PC 端 MATLAB 脚本
 
 | 文件 | 作用 | 关键数据 |
 |---|---|---|
@@ -129,7 +127,7 @@ exp2_dpsk/
 | `setup_paths.m` | 把脚本/图片/模型目录加入 MATLAB 路径 | — |
 | `sample_data/` | 一份**真实声学采集**的样例 `dpsk5.mat`（发的是 `ren512b.bmp`），无需板子即可离线试解码 | BER≈0.008（4/512），**非 0 属正常**——这是带信道噪声的真实录音 |
 
-### `board/py/` — 板上 Python 实现（与上面 `.m` 同名配对）
+### `py/` — 板上 Python 实现（与上面 `.m` 同名配对）
 
 **这几个脚本是在开发板上跑的**（板子只要有 python3，不需要 MATLAB）：
 它们读写的是板上的工作目录、打印的是板上的 `./build/…` 命令。
@@ -167,7 +165,7 @@ arecord -l                                # 先看麦克风是 card 几
 ```bash
 IMG=baseband_images/ren512b.bmp           # 换任意图片；缺省即此张
 
-python3 board/py/dpsk_emit.py $IMG            # 生成发射信号 + 打印建议 -t
+python3 py/dpsk_emit.py $IMG            # 生成发射信号 + 打印建议 -t
 
 # A) 文件直喂（无声学噪声，纯测 DSP/解码）
 make AUDIO=file && ./build/dpsk_rx -d dpsk_tx.raw
@@ -175,25 +173,25 @@ make AUDIO=file && ./build/dpsk_rx -d dpsk_tx.raw
 # B) 真实声学（扬声器播放 + 麦克风采集；-t 用建议值）
 make && (aplay -q dpsk_tx.wav &) ; ./build/dpsk_rx -d plughw:2,0 -t 13
 
-python3 board/py/dpsk_rev.py $IMG             # 帧同步 + BER + 还原图像
+python3 py/dpsk_rev.py $IMG             # 帧同步 + BER + 还原图像
 ```
 
 ### 在 PC 上用 MATLAB 跑（效果等价）
 
-把 `host/dpsk_emit.m` 与 `dpsk_rev.m` 顶部 `img_name` 改成同一张图；`dpsk_emit` 发射、
-板上 `dpsk_rx` 采集、`scp` 取回 `dpsk5.mat` 到 `host/`、`dpsk_rev` 解码。
+把 `dpsk_emit.m` 与 `dpsk_rev.m` 顶部 `img_name` 改成同一张图；`dpsk_emit` 发射、
+板上 `dpsk_rx` 采集、`scp` 取回 `dpsk5.mat` 到实验目录、`dpsk_rev` 解码。
 
 ## 重新生成模型（改算法后）
 
-两种等价方式，产物都落到 `board/dpsk_receive_ert_rtw/`，任选其一。
+两种等价方式，产物都落到 `dpsk_receive_ert_rtw/`，任选其一。
 
 ### 方式 A：脚本（`slbuild`，可批处理）
 
 ```matlab
 R = '<仓库根目录>';
 % ★ 代码生成到哪，由 MATLAB 的**当前文件夹**决定（Simulink 的「代码生成
-%   文件夹」默认就是当前文件夹）。先 cd 到 board/，产物自然落在这里。
-cd(fullfile(R,'exp2_dpsk','board'));   % 模型和生成目录都在这儿
+%   文件夹」默认就是当前文件夹）。先 cd 到实验目录，产物自然落在这里。
+cd(fullfile(R,'exp2_dpsk'));   % 模型、生成目录、脚本都在这儿
 load_system('dpsk_receive')
 % …如需改算法在此修改…
 set_param('dpsk_receive','SystemTargetFile','ert.tlc');
@@ -201,19 +199,18 @@ set_param('dpsk_receive','HardwareBoard','None');
 set_param('dpsk_receive','GenCodeOnly','on');
 set_param('dpsk_receive','MatFileLogging','off');
 set_param('dpsk_receive','Toolchain','Automatically locate an installed toolchain');
-slbuild('dpsk_receive');     % 生成到 board/dpsk_receive_ert_rtw/
+slbuild('dpsk_receive');     % 生成到 dpsk_receive_ert_rtw/
 % 若打印「1 models already up to date」说明模型没改过、代码被跳过；
 % 想无条件重来加 'ForceTopModelBuild',true
 ```
 
 ### 方式 B：Simulink 界面（GUI，更直观）
 
-> ⚠️ **动手前先把 MATLAB 的当前文件夹切到 `exp2_dpsk/board/`**（左侧地址栏，或命令行 `cd`）。
+> ⚠️ **动手前先把 MATLAB 的当前文件夹切到 `exp2_dpsk/`**（左侧地址栏，或命令行 `cd`）。
 > 代码生成到哪，由**当前文件夹**决定——Simulink 的「代码生成文件夹」默认就是它。
-> 不切的话代码会落到你当时所在的目录（比如 `exp2_dpsk/` 根下），`make` 编的还是
-> `board/` 里的旧代码。
+> 不切的话代码会落到你当时所在的目录，`make` 编的还是实验目录里的旧代码。
 
 打开 `dpsk_receive.slx` → **APPS → Embedded Coder** → `Ctrl+E` 按上面的参数对齐
 （与[实验三文档](实验三_chirp扩频.md)的配置表一致）→ `Ctrl+B` 生成。
 
-生成后若 Inport/Outport 名字变了，同步改 `board/model_glue.c` 一处即可。
+生成后若 Inport/Outport 名字变了，同步改 `src/model_glue.c` 一处即可。

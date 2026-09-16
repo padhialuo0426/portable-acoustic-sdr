@@ -39,7 +39,7 @@ arecord -D plughw:2,0 -f S16_LE -r 8000 -c 1 -d 1 /tmp/m.wav
 python3 -c "import wave,struct,math;w=wave.open(open('/tmp/m.wav','rb'));n=w.getnframes();s=struct.unpack('<%dh'%n,w.readframes(n));print('RMS=%.0f 峰值=%d'%(math.sqrt(sum(v*v for v in s)/n),max(abs(v) for v in s)))"
 ```
 
-（以上两条都在**板子上**执行。）在 PC 端也可以直接用 `host/gui.m` 的「③ 电平校准」，
+（以上两条都在**板子上**执行。）在 PC 端也可以直接用 `gui.m` 的「③ 电平校准」，
 它做的就是这件事。
 
 ### Q5. 信号过载，峰值顶到 32767 解不出
@@ -89,7 +89,7 @@ RMS——它就是用来定位这类问题的。偏低就把系统输出临时�
 - **宿主机不需要 C 编译器**——编译在板上跑，用板子自己的 `gcc`。
 - **手动流程是教学正路**：传代码、板上 `make`、声学实测，每条命令都是要学的 Linux 过程。
   **首次学习请按[教程](手把手部署运行教程.md)手动走一遍。**
-- 理解之后，`host/gui.m` 可以把这套流程一键化：① 自检 → ② 同步源码到板上并编译
+- 理解之后，`gui.m` 可以把这套流程一键化：① 自检 → ② 同步源码到板上并编译
   → ③ 电平校准 → ④ 一键声学实测。它用 MATLAB 自带的 JSch，填 IP + 用户名 + 密码即可，
   三个平台一致、不需要配密钥。「IP 地址」填板子的局域网 IP（板上 `hostname -I` 可查）。
 
@@ -116,8 +116,8 @@ set_param(mdl,'Toolchain','Automatically locate an installed toolchain');
 脚本（`slbuild`）和界面（APPS → Embedded Coder → `Ctrl+B`）产物一致。关键配置：
 `ert.tlc` + `HardwareBoard=None` + `GenCodeOnly=on` + `MatFileLogging=off`
 + `Device Type=ARM Cortex-A (64-bit)` + `Toolchain=Automatically locate an installed toolchain`
-（**少最后一条会报错，见 Q10**）。生成到 `board/*_ert_rtw/`，再 `make`。
-若 Inport/Outport 改了名，同步改 `board/model_glue.c` 一处。详见各实验文档。
+（**少最后一条会报错，见 Q10**）。生成到 `<模型名>_ert_rtw/`，再 `make`。
+若 Inport/Outport 改了名，同步改 `src/model_glue.c` 一处。详见各实验文档。
 
 ### Q12. 模型里为什么不能用 `To File`？`MatFileLogging` 为什么必须关？
 
