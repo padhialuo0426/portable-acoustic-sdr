@@ -19,12 +19,10 @@ tx_truth.txt
 # 但保留作为固定样例的数据(供离线试解码)
 !**/sample_data/*.mat
 
-# Simulink 生成目录：保留 .c/.h 源码，忽略缓存与工程文件
+# Simulink 相关：模型缓存与生成目录都不入库
 **/slprj/
 **/*.slxc
 **/*.slx.r*
-**/*_ert_rtw/*.mk
-**/*_ert_rtw/*.tmw
-**/*_ert_rtw/*.dmr
-**/*_ert_rtw/html/
-**/*_ert_rtw/tmwinternal/
+# Simulink 生成的代码整目录不入库：改完模型自己重新生成（见各实验文档
+# 「重新生成模型」一节）。本实验宿主机必须装 MATLAB，不存在没有它的场景。
+**/*_ert_rtw/

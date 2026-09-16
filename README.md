@@ -43,7 +43,7 @@ arecord -l                           # 看麦克风是 card 几
     exp2_dpsk/
     ├── Makefile             板上构建入口
     ├── dpsk_receive.slx         Simulink 模型（只在 PC 上打开，不上板）
-    ├── dpsk_receive_ert_rtw/    模型生成的 C（可整个删掉重生成）
+    ├── dpsk_receive_ert_rtw/    模型生成的 C（**不入库**，MATLAB 里生成）
     ├── src/                 手写 C：main.c  model_glue.c  model_iface.h
     ├── py/                  免 MATLAB 的板上发射/解码脚本
     ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m

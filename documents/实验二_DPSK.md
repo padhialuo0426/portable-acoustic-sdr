@@ -48,7 +48,7 @@ flowchart TD
 exp2_dpsk/
 ├── Makefile           构建入口（MODEL/AUDIO 开关）
 ├── dpsk_receive.slx        Simulink 模型（只在 PC 上打开）
-├── dpsk_receive_ert_rtw/   模型生成的纯算法 C（板上编译）
+├── dpsk_receive_ert_rtw/   模型生成的 C（**不入库**，Ctrl+B 生成）
 ├── src/               手写 C：main.c  model_glue.c  model_iface.h
 ├── py/                dpsk_emit.py  dpsk_rev.py（免 MATLAB，在板上跑）
 ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
@@ -66,6 +66,8 @@ exp2_dpsk/
 | `model_iface.h` | 契约：`MODEL_FRAME_SAMPLES=80`、`MODEL_FRAME_RATE_HZ=100` 等，`model_step_frame()` 声明。 |
 
 ### `dpsk_receive_ert_rtw/` — Simulink 生成的 C
+
+> 这个目录**不在仓库里**，第一次用要先在 MATLAB 里生成（见下面「重新生成模型」）。
 
 | 文件 | 作用 |
 |---|---|

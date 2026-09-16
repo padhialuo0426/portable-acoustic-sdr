@@ -70,7 +70,7 @@ flowchart LR
     exp2_dpsk/
     ├── Makefile             板上构建入口
     ├── dpsk_receive.slx         Simulink 模型（只在 PC 上打开，不上板）
-    ├── dpsk_receive_ert_rtw/    模型生成的 C（可整个删掉重生成）
+    ├── dpsk_receive_ert_rtw/    模型生成的 C（**不入库**，MATLAB 里生成）
     ├── src/                 手写 C：main.c  model_glue.c  model_iface.h
     ├── py/                  免 MATLAB 的板上发射/解码脚本
     ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
@@ -117,7 +117,9 @@ Fedora `sudo dnf install alsa-lib-devel`。交叉编译：`make CC=aarch64-linux
 
 ## 重新生成模型（改算法后，需 MATLAB）
 
-`.slx` 与它生成的 C 代码（`<模型名>_ert_rtw/`）已一起入库，**运行端不需要 MATLAB**。
+仓库里只有 `.slx` 模型，**生成的 C 代码不入库**——两个版本的代码生成器产出不同
+（内部临时变量名、浮点运算顺序都会变），存一份反而容易和你手里的 MATLAB 对不上。
+所以**宿主机必须装 MATLAB**，用之前先生成一次，产物落在 `<模型名>_ert_rtw/`。
 只有当你要改算法时才需要在 MATLAB 里重新生成：配置 `ert.tlc` + `HardwareBoard=None`
 + `GenCodeOnly` + 关 MAT 日志 + `Toolchain` 设为自动定位，`slbuild` 直接覆盖
 `<模型名>_ert_rtw/`，再 `make` 即可。Device Type 已设为 `ARM Cortex-A (64-bit)`。
