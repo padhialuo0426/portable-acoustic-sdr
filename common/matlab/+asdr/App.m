@@ -498,7 +498,7 @@ classdef App < handle
             if st ~= 0, app.logStep('同步源码', '✗', '上传失败：%s', asdr.firstLine(out)); return, end
             % 先删掉板上旧的 *_ert_rtw：tar 解包只覆盖/新增、不删除，若这次重新
             % 生成让某个 .c 改了名或消失，残留的"孤儿 .c"会被 Makefile 的 *.c 通配
-            % 编进去而报错（教程 6.1 提醒过的坑）。生成代码独占 *_ert_rtw 目录，
+            % 编进去而报错（教程 7.1 提醒过的坑）。生成代码独占 *_ert_rtw 目录，
             % 可以整个删掉重来（用 find 按名字删，不必关心模型叫什么）；
             % 手写的 src/*.c 不会改名，不动。
             %
