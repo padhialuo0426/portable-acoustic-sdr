@@ -34,18 +34,12 @@ function gui()
 
     lab = @(t) uilabel(gL,'Text',t,'HorizontalAlignment','right');
 
-    % 三项都必填。走 MATLAB 自带的 JSch，它不读 ~/.ssh/config，所以「主机/IP」
-    % 不能填 ssh 别名（pi5 这种），要填真实 IP 或可解析的主机名。
-    lab('主机/IP');      A.host = uieditfield(gL,'text','Value','', ...
-                              'Placeholder','如 192.168.3.82', ...
-                              'Tooltip','IP 或可解析主机名；不支持 ~/.ssh/config 里的别名', ...
+    % 三项都必填。走 MATLAB 自带的 JSch，「IP 地址」填板子的局域网 IP。
+    lab('IP 地址');      A.host = uieditfield(gL,'text','Value','', ...
                               'ValueChangedFcn',@(~,~)credentialsChanged());
     lab('用户名');       A.user = uieditfield(gL,'text','Value','', ...
-                              'Placeholder','板子登录名，如 pi', ...
                               'ValueChangedFcn',@(~,~)credentialsChanged());
     lab('密码');         A.pass = uieditfield(gL,'text','Value','', ...
-                              'Placeholder','板子登录密码', ...
-                              'Tooltip','注意：MATLAB 编辑框不支持掩码，密码会明文显示', ...
                               'ValueChangedFcn',@(~,~)credentialsChanged());
     lab('板上路径');     A.rdir = uieditfield(gL,'text','Value','','Enable','off', ...
                               'Placeholder','点「① 自检」后自动填入');
@@ -96,8 +90,6 @@ function gui()
     fig.CloseRequestFcn = @(~,~) closeAll();
     refreshTiming();
     logf('就绪。顺序：① 自检 → ② 同步并编译 → ③ 电平校准 → ④ 一键实测');
-    logf('先填「主机/IP」「用户名」「密码」三项（不支持 ~/.ssh/config 别名）');
-    logf('放音在本机、录音在板子，不要自放自录');
 
     %% ------------------------- 回调 -------------------------
 
@@ -125,7 +117,7 @@ function gui()
                 return
             end
             hn = firstLine(out);
-            if isempty(hn) || strcmp(hn, 'unknown'), hn = '(主机名未知)'; end
+            if isempty(hn) || strcmp(hn, 'unknown'), hn = '(未知)'; end
             logStep(sprintf('连接 %s', tgt), '✓', '%s', hn);
 
             if ~refreshAlsa(), return, end
@@ -506,7 +498,7 @@ function gui()
         ok = (st == 0);
         if ~ok
             logStep(sprintf('连接 %s', jTarget()), '✗', '%s', firstLine(out));
-            logf('  已中止。先用「① 自检」确认主机/用户名/密码');
+            logf('  已中止。先用「① 自检」确认 IP/用户名/密码');
         end
     end
 
@@ -517,7 +509,7 @@ function gui()
     % MathWorks 树莓派支持包能做到全平台一键部署的同一条路径。
     %
     % 两点代价，已知并接受：
-    %   1. 不读 ~/.ssh/config，主机栏不能用别名；
+    %   1. 不读 ~/.ssh/config，「IP 地址」栏直接填板子的局域网 IP；
     %   2. MATLAB 带的是 JSch 0.1.x，**不支持 ed25519 私钥**（实测 addIdentity
     %      直接报 invalid privatekey），所以这里只做密码认证。
     % 复用同一条 JSch 会话：自检/轮询会发很多条短命令，每条都新建 TCP+认证
@@ -525,7 +517,7 @@ function gui()
     function s = jsession()
         if isempty(strtrim(A.host.Value)) || isempty(strtrim(A.user.Value)) ...
                 || isempty(A.pass.Value)
-            error('请先填写「主机/IP」「用户名」「密码」三项。');
+            error('请先填写「IP 地址」「用户名」「密码」三项。');
         end
         key = sprintf('%s|%s', jTarget(), A.pass.Value);
         if ~isempty(A.jses) && strcmp(A.jkey, key) && A.jses.isConnected()
@@ -536,9 +528,7 @@ function gui()
         cfg = java.util.Properties();
         cfg.put('StrictHostKeyChecking','no');   % 实验环境沿用不校验主机密钥的策略（并非 accept-new）
         [u, h] = jUserHost();
-        [ip, note] = resolveHost(h);
-        if ~isempty(note), logf('  主机 %s %s', h, note); end
-        s = j.getSession(u, ip, 22);
+        s = j.getSession(u, h, 22);
         s.setPassword(A.pass.Value);
         s.setConfig(cfg);
         s.setTimeout(60000);      % 板上 make 期间输出有间隔，别让读超时打断
@@ -564,37 +554,9 @@ function gui()
         u = strtrim(A.user.Value);
     end
 
-    % 自己解析主机名、优先取 IPv4，再把地址交给 JSch。两个实测踩到的坑：
-    %   1. 板子常同时有全局 IPv6（树莓派默认就有两个 2001:...），而 Java 默认
-    %      优先 IPv6，那些地址未必可路由 -> NoRouteToHost；
-    %   2. 本机若装了 Clash/Surge 这类做 fake-IP DNS 的代理软件，解析不了的
-    %      主机名会被统统映射到 198.18.0.0/15 的假地址（实测 pi5 -> 198.18.1.254），
-    %      连出去必然失败。系统 ssh 不会踩这个坑是因为它读 ~/.ssh/config 把别名
-    %      直接换成真实 IP、根本不做 DNS 解析；JSch 没有这层保护。
-    function [ip, note] = resolveHost(h)
-        note = '';  ip = h;
-        try
-            addrs = java.net.InetAddress.getAllByName(h);
-        catch
-            note = '解析不了，建议直接填 IP';  return
-        end
-        pick = '';
-        for k = 1:numel(addrs)
-            a = char(addrs(k).getHostAddress());
-            if ~contains(a, ':'), pick = a; break, end      % 优先 IPv4
-        end
-        if isempty(pick), pick = char(addrs(1).getHostAddress()); end
-        ip = pick;
-        if ~strcmp(ip, h), note = sprintf('解析为 %s', ip); end
-        if startsWith(ip,'198.18.') || startsWith(ip,'198.19.')
-            note = sprintf(['%s —— 这是代理软件(Clash/Surge 等)的 fake-IP，' ...
-                            '不是板子的真实地址。请在「主机/IP」直接填局域网 IP'], note);
-        end
-    end
-
     function t = jTarget()
         [u, h] = jUserHost();
-        if isempty(h),      t = '(未填主机)';
+        if isempty(h),      t = '(未填 IP)';  
         elseif isempty(u),  t = h;
         else,               t = [u '@' h];
         end
@@ -710,7 +672,7 @@ function gui()
         if strcmpi(s, 'Auth fail') || strcmpi(s, 'Auth cancel')
             s = '认证失败——用户名或密码不对';
         elseif contains(m, 'UnknownHostException')
-            s = '主机名解析不了——建议直接填局域网 IP';
+            s = 'IP 地址不合法——请填板子的局域网 IP';
         elseif contains(lower(m), 'connection refused')
             % 这条要排在通用的 ConnectException 前面：地址是通的，只是没人听 22 端口
             s = '连接被拒——地址通了但 22 端口没响应，板子上 sshd 开着吗？';
