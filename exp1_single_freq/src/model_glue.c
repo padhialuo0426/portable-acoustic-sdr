@@ -5,7 +5,8 @@
  * 通常只需在本文件里核对/修改“输入输出结构体的字段名”这一处即可。
  *
  * 两种构建：
- *   - 默认：链接真实的 single_fre_rev 生成代码（需先把生成代码放进 model/）
+ *   - 默认：链接真实的 single_fre_rev 生成代码（需先在 MATLAB 里生成
+ *     single_fre_rev_ert_rtw/，见 documents/实验一_单频信号.md）
  *   - -DUSE_MOCK_MODEL：用下面的纯软件桩模型，便于在没有 MATLAB/声卡的
  *     机器上先跑通音频管线与调度逻辑。
  */
@@ -43,7 +44,7 @@ int model_stop_requested(void) { return 0; }
  * ============================================================= */
 #else
 
-#include "single_fre_rev.h"   /* 由 model/ 下的生成代码提供 */
+#include "single_fre_rev.h"   /* 由 single_fre_rev_ert_rtw/ 下的生成代码提供 */
 
 void model_init(void) { single_fre_rev_initialize(); }
 void model_step(void) { single_fre_rev_step(); }

@@ -96,7 +96,7 @@ int main(int argc, char **argv)
         int n = audio_capture_read(cap, inter, MODEL_FRAME_SAMPLES);
         if (n <= 0) break;
 
-        /* 去交织 -> 模型输入 [L0..799, R0..799]。
+        /* 去交织 -> 模型输入 [L0..79, R0..79]。
            单声道(cap_ch=1)：左右都填该单声道；立体声(cap_ch=2)：取左/右两路 */
         int16_t *in = model_input();
         for (int i = 0; i < MODEL_FRAME_SAMPLES; ++i) {

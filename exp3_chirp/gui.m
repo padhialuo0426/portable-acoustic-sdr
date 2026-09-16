@@ -1,7 +1,7 @@
 function gui()
 %GUI  实验三 · 线性调频(chirp)扩频 —— 一键声学实测界面
 %
-%   用法：cd 到本文件所在目录(exp3_chirp/host)后直接运行 gui
+%   用法：cd 到本文件所在目录(exp3_chirp/)后直接运行 gui
 %
 %   把「手把手部署运行教程」第 5 节的动作串成一次点击：
 %     板上启动 chirp_rx 采集 → 宿主机扬声器播放 chirp 信号 → 等采集窗口跑完
