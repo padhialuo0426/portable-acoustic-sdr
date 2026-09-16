@@ -7,7 +7,7 @@
 | 文档 | 内容 |
 |---|---|
 | 本文（`README.md`） | 工程总览：架构、运行条件、共享底层、构建总览、重新生成模型 |
-| [`实验一_单频信号.md`](实验一_单频信号.md) | 实验一逐目录文件说明 + 用法 + 模型改造 |
+| [`实验一_单频信号.md`](实验一_单频信号.md) | 实验一逐目录文件说明 + 用法 |
 | [`实验二_DPSK.md`](实验二_DPSK.md) | 实验二逐目录文件说明 + 差分编码/成形/多图自适应 + 用法 |
 | [`实验三_chirp扩频.md`](实验三_chirp扩频.md) | 实验三逐目录文件说明 + 多速率/多图自适应 + 用法 |
 | [`手把手部署运行教程.md`](手把手部署运行教程.md) | **从零到实测的分步操作**：传代码上板 → 编译 → 声学实测 → 取回解码 |
@@ -19,15 +19,12 @@
 
 ## 这是什么
 
-把一套原本**绑死树莓派**的 Simulink 声学软件无线电教学工程，移植成在**任意 Linux**
-（x86 / 树莓派 / Jetson / 香橙派 / 其它 ARM 板）上 `gcc` 直接编译运行的工程。
+一套 Simulink 声学软件无线电教学工程，接收端在**任意 Linux**
+（x86 / 树莓派 / Jetson / 香橙派 / 其它 ARM 板）上用 `gcc` 直接编译运行。
 
-**运行条件**：任意 Linux + `libasound`(ALSA 用户态库) + `pthread` + `gcc`。
+**运行条件**：任意 Linux + `libasound`(ALSA 用户态库) + `pthread` + `gcc`，
+**不需要 MathWorks 硬件支持包**。
 **与具体板子无关**——平台差异只剩一个命令行参数 `-d <声卡设备名>`。
-
-> 原工程靠 **Simulink Support Package for Raspberry Pi**（硬件支持包）才能跑：
-> 模型里嵌 MathWorks 硬件块、生成树莓派专用代码。移植后**运行端完全脱离支持包**，
-> 也不再需要树莓派——它只是"碰巧第一块验证板"。
 
 ## 整体架构：非对称「PC 发射 + 板端接收」
 
@@ -45,15 +42,14 @@ flowchart LR
     rx -->|"用 scp/FileZilla 把 .mat 从 Linux 板子传回 PC"| dec
 ```
 
-- **发射端**（`host/`）：纯 PC MATLAB，用 `sound()` 经声卡播放，本就与硬件支持包无关。
+- **发射端**（`host/`）：纯 PC MATLAB，用 `sound()` 经声卡播放。
   实验二/三另提供免 MATLAB 的 Python 版（`host/dpsk_emit.py`、`host/bok_emit.py`）。
   三个实验各有一个可选的 `host/gui.m`，把「连接/枚举采集设备 + 同步源码上板并编译 +
   电平校准 + 启动采集/放音/取回/解码」串成四次点击（手动流程仍是教学正路，
   见 [Q&A](Q&A.md) Q9）。
-- **接收端**（板上 C）：移植的核心。Simulink 只负责生成**纯算法 C**，音频 I/O、
+- **接收端**（板上 C）：Simulink 只负责生成**纯算法 C**，音频 I/O、
   落盘、调度全部由手写的 POSIX/ALSA 代码（`common/`）承担。
 - **取文件**：接收端把 `.mat` 写到板上本地盘，用标准 **`scp`/FileZilla** 拉回 PC。
-  （原工程的 `:6666` TCP 文件服务器 + `client.m` 已废弃删除——它做的就是 `scp` 的事。）
 
 ## 顶层目录结构
 
@@ -74,10 +70,10 @@ flowchart LR
 
 | 文件 | 作用 |
 |---|---|
-| `include/audio_io.h`、`src/audio_io.c` | POSIX/ALSA 采集+播放（S16_LE，设备/速率/声道/帧长可配，`snd_pcm_recover` 处理 xrun），取代支持包音频驱动 |
+| `include/audio_io.h`、`src/audio_io.c` | POSIX/ALSA 采集+播放（S16_LE，设备/速率/声道/帧长可配，`snd_pcm_recover` 处理 xrun） |
 | `src/audio_io_null.c` | 合成 1kHz 单音后端（无声卡机器联调，编译开关 `AUDIO=null`） |
 | `src/audio_io_file.c` | 原始 int16 文件输入后端（无噪声链路验证，`AUDIO=file`） |
-| `include/mat_sink.h`、`src/mat_sink.c` | MAT-v4 流式写入器，复刻原 `To File` 的 `.mat` 输出 |
+| `include/mat_sink.h`、`src/mat_sink.c` | MAT-v4 流式写入器，产出与 Simulink `To File` 同格式的 `.mat` |
 
 平台差异收敛到一个参数 `-d`；唯一耦合 Simulink 符号名的代码集中在各实验
 `src/model_glue.c`（重新生成模型后只需核对一处字段名）。

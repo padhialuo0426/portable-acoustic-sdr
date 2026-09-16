@@ -1,8 +1,8 @@
 # portable-acoustic-sdr
 
-把一套原本**绑死树莓派**的 Simulink 声学软件无线电教学工程，移植成在**任意 Linux**
-（x86 / 树莓派 / Jetson / 香橙派 / 其它 ARM 板）上 `gcc` 直接编译运行的工程。
-运行时只依赖 `libasound`(ALSA) + `pthread`，**不再需要 MathWorks 树莓派硬件支持包**。
+一套 Simulink 声学软件无线电教学工程：PC 用扬声器发射，开发板用麦克风接收。
+接收端在**任意 Linux**（x86 / 树莓派 / Jetson / 香橙派 / 其它 ARM 板）上 `gcc` 直接编译运行，
+只依赖 `libasound`(ALSA) + `pthread`，**不需要 MathWorks 硬件支持包**。
 
 含三个实验：**实验一 单频信号测试**、**实验二 DPSK 差分相移键控**、
 **实验三 线性调频(chirp)扩频通信**

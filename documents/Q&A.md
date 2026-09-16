@@ -128,7 +128,7 @@ set_param(mdl,'Toolchain','Automatically locate an installed toolchain');
 
 ### Q14. MATLAB 脚本中文注释乱码
 
-原工程是 GBK/UTF-8 混编，现已统一转 UTF-8。新增脚本一律存 UTF-8。
+本工程的 `.m` 脚本一律存 UTF-8。
 
 ---
 
