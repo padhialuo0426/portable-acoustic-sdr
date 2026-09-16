@@ -90,9 +90,6 @@ flowchart LR
 | [实验二](实验二_DPSK.md) | `dpsk_receive.slx` | DPSK 接收：滤波/码元同步/抽样判决 | 100Hz 单速率 | `dpsk_rx` |
 | [实验三](实验三_chirp扩频.md) | `chirp_rev_detect.slx` | LFM 扩频接收检测（多速率 + 15 个 Stateflow） | 10Hz 多速率 | `chirp_rx` |
 
-实验一/三已在 **x86 + 树莓派(aarch64) + 香橙派(Ascend310B)** 三平台实测，声学解码
-**BER = 0**；实验二已在 x86 与树莓派上完成文件直喂验证（六张基带图 **BER = 0**）。
-
 ## 构建总览（两个独立开关 MODEL / AUDIO）
 
 每个实验目录下：
