@@ -179,7 +179,10 @@ classdef App < handle
 
             gLog = uigridlayout(uipanel(gR,'Title','日志'),[1 1]);
             gLog.Padding = [5 5 5 5];
-            app.logBox = uitextarea(gLog,'Editable','off','Value',cell(0,1),'FontName','Menlo');
+            % Value 用 {''} 而不是 cell(0,1)：R2022a 的 uitextarea 不接受空 cell
+            % （报「Index exceeds the number of array elements」），R2025b 才允许。
+            % 下面 logf 已经特判了「只有一行空串」的情况，行为不受影响。
+            app.logBox = uitextarea(gLog,'Editable','off','Value',{''},'FontName','Menlo');
 
             app.fig.CloseRequestFcn = @(~,~) app.closeAll();
             app.refreshTiming();

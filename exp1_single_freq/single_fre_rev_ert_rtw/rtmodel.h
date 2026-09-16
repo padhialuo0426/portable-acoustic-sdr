@@ -7,9 +7,9 @@
  *
  * Code generated for Simulink model 'single_fre_rev'.
  *
- * Model version                  : 12.2
+ * Model version                  : 5.0
  * Simulink Coder version         : 25.2 (R2025b) 28-Jul-2025
- * C/C++ source code generated on : Tue Sep 15 12:28:55 2026
+ * C/C++ source code generated on : Wed Sep 16 20:16:58 2026
  *
  * Target selection: ert.tlc
  * Embedded hardware selection: ARM Compatible->ARM Cortex-A (64-bit)

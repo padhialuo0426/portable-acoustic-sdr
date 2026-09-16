@@ -166,6 +166,10 @@ set_param('chirp_rev_detect','HardwareBoard','None');
 set_param('chirp_rev_detect','GenCodeOnly','on');
 set_param('chirp_rev_detect','MatFileLogging','off');
 set_param('chirp_rev_detect','Toolchain','Automatically locate an installed toolchain');
+% 根 I/O 必须是结构体形式，胶水层就是按 chirp_rev_detect_U / chirp_rev_detect_Y 取值的。
+% 不显式设的话，R2022a 会按「Individual arguments」生成，产出的代码里
+% 根本没有 ExtU/ExtY，板级 model_glue.c 编不过（实测踩到）。
+set_param('chirp_rev_detect','RootIOFormat','Part of model data structure');
 slbuild('chirp_rev_detect');     % 生成到 chirp_rev_detect_ert_rtw/
 % 若打印「1 models already up to date」说明模型没改过、代码被跳过；
 % 想无条件重来加 'ForceTopModelBuild',true
@@ -192,6 +196,7 @@ GUI 方式就是把上面 `set_param` + `slbuild` 用菜单点出来，产物完
    | Code Generation | ☑ Generate code only | 勾上 |
    | Code Generation → Interface | MAT-file logging | **取消勾选**（否则拖入 `rt_logging.c`，见 [Q&A](Q&A.md)） |
    | Code Generation | Toolchain | `Automatically locate an installed toolchain`（模型里存的 `GNU GCC Embedded Linux` 在非 Linux 宿主上未注册，见 [Q&A](Q&A.md)） |
+   | Code Generation → Interface | Code interface packaging | `Nonreusable function`；**根 I/O 选 `Part of model data structure`**（否则 R2022a 生成的代码没有 ExtU/ExtY） |
 
 4. **OK / Apply** 保存配置。
 5. 模型窗口按 **`Ctrl+B`**（或 **C CODE → Generate Code**）生成，结束后自动弹出

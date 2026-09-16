@@ -199,6 +199,10 @@ set_param('dpsk_receive','HardwareBoard','None');
 set_param('dpsk_receive','GenCodeOnly','on');
 set_param('dpsk_receive','MatFileLogging','off');
 set_param('dpsk_receive','Toolchain','Automatically locate an installed toolchain');
+% 根 I/O 必须是结构体形式，胶水层就是按 dpsk_receive_U / dpsk_receive_Y 取值的。
+% 不显式设的话，R2022a 会按「Individual arguments」生成，产出的代码里
+% 根本没有 ExtU/ExtY，板级 model_glue.c 编不过（实测踩到）。
+set_param('dpsk_receive','RootIOFormat','Part of model data structure');
 slbuild('dpsk_receive');     % 生成到 dpsk_receive_ert_rtw/
 % 若打印「1 models already up to date」说明模型没改过、代码被跳过；
 % 想无条件重来加 'ForceTopModelBuild',true

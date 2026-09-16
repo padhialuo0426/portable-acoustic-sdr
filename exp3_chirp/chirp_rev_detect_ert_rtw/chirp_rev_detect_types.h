@@ -7,9 +7,9 @@
  *
  * Code generated for Simulink model 'chirp_rev_detect'.
  *
- * Model version                  : 12.2
+ * Model version                  : 5.0
  * Simulink Coder version         : 25.2 (R2025b) 28-Jul-2025
- * C/C++ source code generated on : Wed Sep 16 18:40:17 2026
+ * C/C++ source code generated on : Wed Sep 16 20:17:35 2026
  *
  * Target selection: ert.tlc
  * Embedded hardware selection: ARM Compatible->ARM Cortex-A (64-bit)

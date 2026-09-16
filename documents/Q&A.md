@@ -125,10 +125,39 @@ set_param(mdl,'Toolchain','Automatically locate an installed toolchain');
 `step()` 变空；`MatFileLogging=on` 又会拉入 `rt_logging.c`（牵 MEX 头，板上编不了）。
 所以模型用 **Outport** 输出，落盘交给板级手写的 `mat_sink.c`。
 
-### Q13. 高版本 MATLAB 的模型能在低版本打开吗？
+### Q13. 模型能在哪些 MATLAB 版本上打开？
 
-**低→高安全，高→低有风险**。`Simulink.exportToVersion` 可能丢信息，尤其 Stateflow
-（实验三有 15 个）。本工程统一用较高版本，不回退。
+**入库的 `.slx` 存的是 R2022a 格式**，R2022a 及以上都能直接打开（低→高安全）。
+
+反过来，高版本存的模型**低版本一定打不开**，会报「模型是用 Simulink 的较新版本
+创建的」。所以**在 R2023a 及以上改完模型、要提交回仓库时，必须导出回 R2022a**：
+
+```matlab
+Simulink.exportToVersion('dpsk_receive','dpsk_receive.slx','R2022A');
+```
+
+否则实验室的机器就打不开了。实测三个模型（含实验三的 15 个 Stateflow）导出后
+**没有任何特性丢失**，R2022a 打开、重新生成代码、编译、解码 BER 均正常。
+
+### Q13b. R2022a 重新生成的代码能用吗？
+
+能，但**必须显式设 `RootIOFormat`**：
+
+```matlab
+set_param(模型名,'RootIOFormat','Part of model data structure');
+```
+
+不设的话 R2022a 会按 `Individual arguments` 生成，产出的代码里**根本没有
+`ExtU`/`ExtY` 结构体**，而板级 `src/model_glue.c` 正是按 `<模型>_U.AudioIn` /
+`<模型>_Y.out_data` 取值的，编译必然失败。各实验文档「重新生成模型」一节的
+脚本里已经带上这一行。
+
+设好之后 R2022a 生成的代码与 R2025b 的**内部临时变量名不同但功能一致**——
+实测直接替换进工程，零改动编译通过，DPSK 512 位与 2048 位图 BER 均为 0。
+
+生成时可能看到 `DesignFlags`、`fmethod.butterbp`、`fdopts.sosscaling` 之类的
+警告，那是 DSP 滤波器设计对象在跨版本反序列化时的提示，**不影响滤波器系数**
+（实测 BER=0 即证）。
 
 ### Q14. MATLAB 脚本中文注释乱码
 

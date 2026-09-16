@@ -7,9 +7,9 @@
  *
  * Code generated for Simulink model 'chirp_rev_detect'.
  *
- * Model version                  : 12.2
+ * Model version                  : 5.0
  * Simulink Coder version         : 25.2 (R2025b) 28-Jul-2025
- * C/C++ source code generated on : Wed Sep 16 18:40:17 2026
+ * C/C++ source code generated on : Wed Sep 16 20:17:35 2026
  *
  * Target selection: ert.tlc
  * Embedded hardware selection: ARM Compatible->ARM Cortex-A (64-bit)
@@ -55,7 +55,7 @@ typedef struct {
 
 /* Block signals (default storage) */
 typedef struct {
-  real_T y_a[800];                     /* '<Root>/MATLAB Function4' */
+  real_T y_o[800];                     /* '<Root>/MATLAB Function4' */
   real32_T temp[1599];
   real32_T DigitalFilter[800];         /* '<S13>/Digital Filter' */
   real32_T DigitalFilter_c[800];       /* '<S2>/Digital Filter' */
@@ -71,10 +71,10 @@ typedef struct {
   real_T position;                     /* '<Root>/Data Store Memory3' */
   real_T aa;                           /* '<Root>/Data Store Memory4' */
   real_T loc;                          /* '<S14>/MATLAB Function14' */
-  real_T aa_h;                         /* '<S14>/MATLAB Function14' */
+  real_T aa_g;                         /* '<S14>/MATLAB Function14' */
   real_T flag;                         /* '<S14>/MATLAB Function14' */
-  real_T loc_b;                        /* '<S3>/MATLAB Function6' */
-  real_T flag_a;                       /* '<S3>/MATLAB Function6' */
+  real_T loc_j;                        /* '<S3>/MATLAB Function6' */
+  real_T flag_p;                       /* '<S3>/MATLAB Function6' */
   real32_T Delay1_DSTATE[799];         /* '<Root>/Delay1' */
   real32_T DigitalFilter_states[150];  /* '<S13>/Digital Filter' */
   real32_T DigitalFilter_states_e[100];/* '<S2>/Digital Filter' */

@@ -7,9 +7,9 @@
  *
  * Code generated for Simulink model 'dpsk_receive'.
  *
- * Model version                  : 13.0
+ * Model version                  : 6.0
  * Simulink Coder version         : 25.2 (R2025b) 28-Jul-2025
- * C/C++ source code generated on : Tue Sep 15 19:39:25 2026
+ * C/C++ source code generated on : Wed Sep 16 20:17:12 2026
  *
  * Target selection: ert.tlc
  * Embedded hardware selection: ARM Compatible->ARM Cortex-A (64-bit)
@@ -107,10 +107,10 @@ void dpsk_receive_step(void)
    *  Delay: '<S6>/Delay'
    */
   for (out = 0; out < 7; out++) {
-    dpsk_receive_B.y_e[out] = dpsk_receive_DW.temp2[out];
+    dpsk_receive_B.y_b[out] = dpsk_receive_DW.temp2[out];
   }
 
-  memcpy(&dpsk_receive_B.y_e[7], &dpsk_receive_DW.Delay_DSTATE[0], 73U * sizeof
+  memcpy(&dpsk_receive_B.y_b[7], &dpsk_receive_DW.Delay_DSTATE[0], 73U * sizeof
          (real_T));
   for (out = 0; out < 7; out++) {
     dpsk_receive_DW.temp2[out] = dpsk_receive_DW.Delay_DSTATE[out + 73];
@@ -186,7 +186,7 @@ void dpsk_receive_step(void)
     /* MATLAB Function: '<Root>/码元延迟' incorporates:
      *  DiscreteFir: '<S7>/Digital Filter'
      */
-    dpsk_receive_B.rtb_y_l_m = dpsk_receive_DW.temp[out];
+    dpsk_receive_B.rtb_y_m_m = dpsk_receive_DW.temp[out];
     rtb_y_p = dpsk_receive_B.DigitalFilter_a[out];
     dpsk_receive_DW.temp[out] = rtb_y_p;
 
@@ -194,7 +194,7 @@ void dpsk_receive_step(void)
      *  DiscreteFir: '<S7>/Digital Filter'
      *  Product: '<S9>/Product2'
      */
-    dpsk_receive_B.y_l[out] = rtb_y_p * dpsk_receive_B.rtb_y_l_m;
+    dpsk_receive_B.y_m[out] = rtb_y_p * dpsk_receive_B.rtb_y_m_m;
   }
 
   /* End of DiscreteFir: '<S7>/Digital Filter' */
@@ -215,18 +215,18 @@ void dpsk_receive_step(void)
   }
 
   /* Copy the initial part of input to ContextBuff_Dwork */
-  memcpy(&dpsk_receive_DW.DigitalFilter_simContextBuf[200], &dpsk_receive_B.y_l
+  memcpy(&dpsk_receive_DW.DigitalFilter_simContextBuf[200], &dpsk_receive_B.y_m
          [0], 80U * sizeof(real_T));
   for (out = 0; out < 80; out++) {
-    dpsk_receive_B.rtb_y_l_m = 0.0;
+    dpsk_receive_B.rtb_y_m_m = 0.0;
     for (q0 = 0; q0 < 201; q0++) {
-      dpsk_receive_B.rtb_y_l_m +=
+      dpsk_receive_B.rtb_y_m_m +=
         dpsk_receive_DW.DigitalFilter_simContextBuf[out + q0] *
         dpsk_receive_DW.DigitalFilter_simRevCoeff[q0];
     }
 
     /* store output sample */
-    dpsk_receive_B.DigitalFilter[out] = dpsk_receive_B.rtb_y_l_m;
+    dpsk_receive_B.DigitalFilter[out] = dpsk_receive_B.rtb_y_m_m;
   }
 
   /* Shift state buffer when input buffer is shorter than state buffer */
@@ -237,7 +237,7 @@ void dpsk_receive_step(void)
 
   /* Reverse copy the states from input to States_Dwork */
   for (out = 0; out < 80; out++) {
-    dpsk_receive_DW.DigitalFilter_states[79 - out] = dpsk_receive_B.y_l[out];
+    dpsk_receive_DW.DigitalFilter_states[79 - out] = dpsk_receive_B.y_m[out];
   }
 
   /* End of DiscreteFir: '<S4>/Digital Filter' */
@@ -246,15 +246,15 @@ void dpsk_receive_step(void)
    *  DiscreteFir: '<S4>/Digital Filter'
    */
   for (out = 0; out < 40; out++) {
-    dpsk_receive_B.y_l[out] = dpsk_receive_DW.temp1[out];
-    dpsk_receive_B.y_l[out + 40] = dpsk_receive_B.DigitalFilter[out];
+    dpsk_receive_B.y_m[out] = dpsk_receive_DW.temp1[out];
+    dpsk_receive_B.y_m[out + 40] = dpsk_receive_B.DigitalFilter[out];
     dpsk_receive_DW.temp1[out] = dpsk_receive_B.DigitalFilter[out + 40];
   }
 
   /* End of MATLAB Function: '<S9>/MATLAB Function10' */
 
   /* S-Function (sdspbiquad): '<S16>/Digital Filter' */
-  dpsk_receive_B.rtb_y_l_m = dpsk_receive_DW.DigitalFilter_FILT_STATES[0];
+  dpsk_receive_B.rtb_y_m_m = dpsk_receive_DW.DigitalFilter_FILT_STATES[0];
   dpsk_receive_B.DigitalFilter_FILT_STATES =
     dpsk_receive_DW.DigitalFilter_FILT_STATES[1];
   dpsk_receive_B.DigitalFilter_FILT_STATES_c =
@@ -352,14 +352,14 @@ void dpsk_receive_step(void)
      *  DiscreteFir: '<S4>/Digital Filter'
      *  Product: '<S9>/Product2'
      */
-    dpsk_receive_B.denAccum = (dpsk_receive_B.y_l[out] *
+    dpsk_receive_B.denAccum = (dpsk_receive_B.y_m[out] *
       dpsk_receive_B.DigitalFilter[out] * 0.0039260127855105477 -
-      -1.9926885993155952 * dpsk_receive_B.rtb_y_l_m) - 0.99948242481080218 *
+      -1.9926885993155952 * dpsk_receive_B.rtb_y_m_m) - 0.99948242481080218 *
       dpsk_receive_B.DigitalFilter_FILT_STATES;
-    dpsk_receive_B.numAccum = (0.0 * dpsk_receive_B.rtb_y_l_m +
+    dpsk_receive_B.numAccum = (0.0 * dpsk_receive_B.rtb_y_m_m +
       dpsk_receive_B.denAccum) - dpsk_receive_B.DigitalFilter_FILT_STATES;
-    dpsk_receive_B.DigitalFilter_FILT_STATES = dpsk_receive_B.rtb_y_l_m;
-    dpsk_receive_B.rtb_y_l_m = dpsk_receive_B.denAccum;
+    dpsk_receive_B.DigitalFilter_FILT_STATES = dpsk_receive_B.rtb_y_m_m;
+    dpsk_receive_B.rtb_y_m_m = dpsk_receive_B.denAccum;
     dpsk_receive_B.denAccum = (0.0039260127855105477 * dpsk_receive_B.numAccum -
       -1.9939672350124602 * dpsk_receive_B.DigitalFilter_FILT_STATES_c) -
       0.99953151783529937 * dpsk_receive_B.DigitalFilter_FILT_STATES_k;
@@ -546,7 +546,7 @@ void dpsk_receive_step(void)
     dpsk_receive_B.denAccum = (0.0039116499112486908 * dpsk_receive_B.numAccum -
       -1.9860507979463005 * DigitalFilter_FILT_STATES_3) - 0.99217670017750259 *
       DigitalFilter_FILT_STATES_4;
-    dpsk_receive_B.y_l[out] = (0.0 * DigitalFilter_FILT_STATES_3 +
+    dpsk_receive_B.y_m[out] = (0.0 * DigitalFilter_FILT_STATES_3 +
       dpsk_receive_B.denAccum) - DigitalFilter_FILT_STATES_4;
     DigitalFilter_FILT_STATES_4 = DigitalFilter_FILT_STATES_3;
     DigitalFilter_FILT_STATES_3 = dpsk_receive_B.denAccum;
@@ -645,20 +645,20 @@ void dpsk_receive_step(void)
     dpsk_receive_B.DigitalFilter_FILT_STATES_c;
   dpsk_receive_DW.DigitalFilter_FILT_STATES[1] =
     dpsk_receive_B.DigitalFilter_FILT_STATES;
-  dpsk_receive_DW.DigitalFilter_FILT_STATES[0] = dpsk_receive_B.rtb_y_l_m;
+  dpsk_receive_DW.DigitalFilter_FILT_STATES[0] = dpsk_receive_B.rtb_y_m_m;
 
   /* MATLAB Function: '<Root>/抽样' incorporates:
    *  S-Function (sdspbiquad): '<S16>/Digital Filter'
    */
   if (dpsk_receive_DW.Am > 0.0) {
     for (q0 = 0; q0 < 79; q0++) {
-      if ((dpsk_receive_B.y_l[q0] < 0.0) && (dpsk_receive_B.y_l[q0 + 2] > 0.0) &&
-          (dpsk_receive_B.y_l[q0 + 1] > 0.0)) {
+      if ((dpsk_receive_B.y_m[q0] < 0.0) && (dpsk_receive_B.y_m[q0 + 2] > 0.0) &&
+          (dpsk_receive_B.y_m[q0 + 1] > 0.0)) {
         dpsk_receive_DW.loc = (real_T)q0 + 2.0;
       }
     }
 
-    if (dpsk_receive_B.y_e[(int32_T)dpsk_receive_DW.loc - 1] > 0.0) {
+    if (dpsk_receive_B.y_b[(int32_T)dpsk_receive_DW.loc - 1] > 0.0) {
       out = 1;
     } else {
       out = -1;
@@ -685,7 +685,7 @@ void dpsk_receive_step(void)
 
   if (dpsk_receive_DW.position > 0.0) {
     /* Outport: '<Root>/out_data' */
-    dpsk_receive_Y.out_data = dpsk_receive_B.y_e[(int32_T)
+    dpsk_receive_Y.out_data = dpsk_receive_B.y_b[(int32_T)
       dpsk_receive_DW.position - 1] / 80.0;
   } else {
     /* Outport: '<Root>/out_data' */
@@ -695,7 +695,7 @@ void dpsk_receive_step(void)
   /* End of MATLAB Function: '<Root>/抽样' */
 
   /* Delay: '<Root>/Delay2' */
-  memcpy(&dpsk_receive_B.y_e[0], &dpsk_receive_DW.Delay2_DSTATE[0], 80U * sizeof
+  memcpy(&dpsk_receive_B.y_b[0], &dpsk_receive_DW.Delay2_DSTATE[0], 80U * sizeof
          (real_T));
 
   /* MATLAB Function: '<Root>/匹配滤波' incorporates:
@@ -735,16 +735,16 @@ void dpsk_receive_step(void)
 
   /* MATLAB Function: '<S1>/MATLAB Function6' */
   if (rtb_y_p > 8.0F) {
-    dpsk_receive_DW.loc_c++;
+    dpsk_receive_DW.loc_e++;
   } else {
-    dpsk_receive_DW.loc_c = 0.0;
+    dpsk_receive_DW.loc_e = 0.0;
   }
 
-  if (dpsk_receive_DW.loc_c > 10.0) {
-    dpsk_receive_DW.flag_b++;
+  if (dpsk_receive_DW.loc_e > 10.0) {
+    dpsk_receive_DW.flag_k++;
   }
 
-  if (dpsk_receive_DW.flag_b == 1.0) {
+  if (dpsk_receive_DW.flag_k == 1.0) {
     dpsk_receive_DW.Am = rtb_y_p;
   }
 
@@ -760,11 +760,11 @@ void dpsk_receive_step(void)
     dpsk_receive_DW.Delay_DSTATE[out] = dpsk_receive_DW.Delay_DSTATE[out + 80];
   }
 
-  dpsk_receive_DW.Delay_DSTATE[3199] = dpsk_receive_B.y_e[79] +
+  dpsk_receive_DW.Delay_DSTATE[3199] = dpsk_receive_B.y_b[79] +
     dpsk_receive_B.temp[79];
   for (out = 0; out < 79; out++) {
     dpsk_receive_DW.Delay_DSTATE[out + 3120] =
-      (dpsk_receive_DW.Delay1_DSTATE[out] + dpsk_receive_B.y_e[out]) +
+      (dpsk_receive_DW.Delay1_DSTATE[out] + dpsk_receive_B.y_b[out]) +
       dpsk_receive_B.temp[out];
 
     /* Update for Delay: '<Root>/Delay1' incorporates:

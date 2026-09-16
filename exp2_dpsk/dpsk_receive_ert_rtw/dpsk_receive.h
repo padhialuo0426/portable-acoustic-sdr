@@ -7,9 +7,9 @@
  *
  * Code generated for Simulink model 'dpsk_receive'.
  *
- * Model version                  : 13.0
+ * Model version                  : 6.0
  * Simulink Coder version         : 25.2 (R2025b) 28-Jul-2025
- * C/C++ source code generated on : Tue Sep 15 19:39:25 2026
+ * C/C++ source code generated on : Wed Sep 16 20:17:12 2026
  *
  * Target selection: ert.tlc
  * Embedded hardware selection: ARM Compatible->ARM Cortex-A (64-bit)
@@ -39,13 +39,13 @@
 typedef struct {
   real_T temp[239];
   real_T DigitalFilter[80];            /* '<S4>/Digital Filter' */
-  real_T y_e[80];                      /* '<S6>/MATLAB Function10' */
-  real_T y_l[80];                      /* '<S9>/MATLAB Function10' */
+  real_T y_b[80];                      /* '<S6>/MATLAB Function10' */
+  real_T y_m[80];                      /* '<S9>/MATLAB Function10' */
   real32_T DigitalFilter_a[80];        /* '<S7>/Digital Filter' */
   real32_T Gain[80];                   /* '<S3>/Gain' */
   real_T numAccum;
   real_T denAccum;
-  real_T rtb_y_l_m;
+  real_T rtb_y_m_m;
   real_T DigitalFilter_FILT_STATES;
   real_T DigitalFilter_FILT_STATES_c;
   real_T DigitalFilter_FILT_STATES_k;
@@ -109,8 +109,8 @@ typedef struct {
   real_T count;                        /* '<Root>/抽样' */
   real_T flag;                         /* '<Root>/抽样' */
   real_T temp2[7];                     /* '<S6>/MATLAB Function10' */
-  real_T loc_c;                        /* '<S1>/MATLAB Function6' */
-  real_T flag_b;                       /* '<S1>/MATLAB Function6' */
+  real_T loc_e;                        /* '<S1>/MATLAB Function6' */
+  real_T flag_k;                       /* '<S1>/MATLAB Function6' */
   real32_T DigitalFilter_states_b[150];/* '<S7>/Digital Filter' */
   real32_T DigitalFilter_simContextBuf_d[300];/* '<S7>/Digital Filter' */
   real32_T DigitalFilter_simRevCoeff_i[151];/* '<S7>/Digital Filter' */
