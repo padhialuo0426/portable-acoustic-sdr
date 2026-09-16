@@ -43,7 +43,7 @@ arecord -l                           # 看麦克风是 card 几
     ├── Makefile             板上构建入口
     ├── board/               板上要的一切
     │   ├── main.c  model_glue.c  model_iface.h     手写
-    │   ├── model/           Simulink 生成的 C（可整个删掉重生成）
+    │   ├── *_ert_rtw/       Simulink 生成的 C（可整个删掉重生成）
     │   └── py/              免 MATLAB 的板上发射/解码脚本
     ├── host/                PC 上 MATLAB 要的
     │   ├── dpsk_receive.slx     模型

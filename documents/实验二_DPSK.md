@@ -49,7 +49,7 @@ exp2_dpsk/
 ├── Makefile           构建入口（MODEL/AUDIO 开关）
 ├── board/             板上的一切
 │   ├── main.c  model_glue.c  model_iface.h    手写运行时 + 契约
-│   ├── model/         Simulink 生成的纯算法 C
+│   ├── dpsk_receive_ert_rtw/    Simulink 生成的纯算法 C
 │   └── py/            dpsk_emit.py  dpsk_rev.py（免 MATLAB，在板上跑）
 ├── host/              PC 上 MATLAB 的一切
 │   ├── dpsk_receive.slx                       模型
@@ -66,7 +66,7 @@ exp2_dpsk/
 | `board/model_glue.c` | 耦合 Simulink 符号名的薄层：`dpsk_receive_U.AudioIn` 输入、`dpsk_receive_Y.out_data` 判决。 |
 | `board/model_iface.h` | 契约：`MODEL_FRAME_SAMPLES=80`、`MODEL_FRAME_RATE_HZ=100` 等，`model_step_frame()` 声明。 |
 
-### `board/model/` — Simulink 生成的 C
+### `board/dpsk_receive_ert_rtw/` — Simulink 生成的 C
 
 | 文件 | 作用 |
 |---|---|
@@ -185,18 +185,18 @@ python3 board/py/dpsk_rev.py $IMG             # 帧同步 + BER + 还原图像
 
 ## 重新生成模型（改算法后）
 
-两种等价方式，产物都落到 `board/model/dpsk_receive_ert_rtw/`，任选其一。
+两种等价方式，产物都落到 `board/dpsk_receive_ert_rtw/`，任选其一。
 
 ### 方式 A：脚本（`slbuild`，可批处理）
 
 ```matlab
 R = '<仓库根目录>';
-% .slx 在 host/，生成的 C 要落到 board/model/，所以显式指定生成目录。
+% .slx 在 host/，生成的 C 要落到 board/，所以显式指定生成目录。
 % 注意 CodeGenFolder 只能指定**父目录**，末级 dpsk_receive_ert_rtw 这个
 % 名字由「模型名+目标」拼出来，改不了。
 Simulink.fileGenControl('set', ...
-    'CodeGenFolder', fullfile(R,'exp2_dpsk','board','model'), ...
-    'CacheFolder',   fullfile(R,'exp2_dpsk','board','model'), 'createDir', true);
+    'CodeGenFolder', fullfile(R,'exp2_dpsk','board'), ...
+    'CacheFolder',   fullfile(R,'exp2_dpsk','board'), 'createDir', true);
 
 % 当前目录里若已有同名生成目录，Simulink 会直接拒绝构建，
 % 所以从一个空目录跑，靠 addpath 找模型。
@@ -208,7 +208,9 @@ set_param('dpsk_receive','HardwareBoard','None');
 set_param('dpsk_receive','GenCodeOnly','on');
 set_param('dpsk_receive','MatFileLogging','off');
 set_param('dpsk_receive','Toolchain','Automatically locate an installed toolchain');
-slbuild('dpsk_receive');     % 生成到 board/model/dpsk_receive_ert_rtw/
+slbuild('dpsk_receive');     % 生成到 board/dpsk_receive_ert_rtw/
+% 若打印「1 models already up to date」说明模型没改过、代码被跳过；
+% 想无条件重来加 'ForceTopModelBuild',true
 ```
 
 ### 方式 B：Simulink 界面（GUI，更直观）

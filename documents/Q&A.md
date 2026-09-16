@@ -116,7 +116,7 @@ set_param(mdl,'Toolchain','Automatically locate an installed toolchain');
 脚本（`slbuild`）和界面（APPS → Embedded Coder → `Ctrl+B`）产物一致。关键配置：
 `ert.tlc` + `HardwareBoard=None` + `GenCodeOnly=on` + `MatFileLogging=off`
 + `Device Type=ARM Cortex-A (64-bit)` + `Toolchain=Automatically locate an installed toolchain`
-（**少最后一条会报错，见 Q10**）。生成到 `board/model/*_ert_rtw/`，再 `make`。
+（**少最后一条会报错，见 Q10**）。生成到 `board/*_ert_rtw/`，再 `make`。
 若 Inport/Outport 改了名，同步改 `board/model_glue.c` 一处。详见各实验文档。
 
 ### Q12. 模型里为什么不能用 `To File`？`MatFileLogging` 为什么必须关？

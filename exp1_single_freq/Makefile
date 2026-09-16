@@ -4,7 +4,7 @@
 #  共享底层(音频/MAT)在 ../common，本实验专属(main/胶水/生成代码)在 board/。
 #
 #  两个独立开关：
-#    MODEL = real (默认) | mock             real=编译 board/model/ 下的 Simulink 生成代码
+#    MODEL = real (默认) | mock             real=编译 board/ 下的 Simulink 生成代码
 #    AUDIO = alsa (默认) | null | file      null=合成音频(无需声卡/ALSA)，file=raw 文件输入
 #
 #  常用组合：
@@ -22,8 +22,8 @@ CFLAGS  += -D_GNU_SOURCE
 
 COMMON      := ../common
 # Simulink 代码生成输出目录（重新生成后直接读取，无需拷贝）
-MODEL_DIR   ?= board/model/single_fre_rev_ert_rtw
-SHAREDUTILS := $(wildcard board/model/slprj/ert/_sharedutils)
+MODEL_DIR   ?= board/single_fre_rev_ert_rtw
+SHAREDUTILS := $(wildcard board/slprj/ert/_sharedutils)
 
 CFLAGS  += -Iboard -I$(COMMON)/include
 LDLIBS  := -lm

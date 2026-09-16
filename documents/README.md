@@ -70,7 +70,7 @@ flowchart LR
     ├── Makefile             板上构建入口
     ├── board/               板上要的一切
     │   ├── main.c  model_glue.c  model_iface.h     手写
-    │   ├── model/           Simulink 生成的 C（可整个删掉重生成）
+    │   ├── *_ert_rtw/       Simulink 生成的 C（可整个删掉重生成）
     │   └── py/              免 MATLAB 的板上发射/解码脚本
     ├── host/                PC 上 MATLAB 要的
     │   ├── dpsk_receive.slx     模型
@@ -118,10 +118,10 @@ Fedora `sudo dnf install alsa-lib-devel`。交叉编译：`make CC=aarch64-linux
 
 ## 重新生成模型（改算法后，需 MATLAB）
 
-`.slx`（在 `host/`）与生成的 C 代码（`board/model/*_ert_rtw/*.c/.h`）都已入库，**运行端不需要 MATLAB**。
+`.slx`（在 `host/`）与生成的 C 代码（`board/*_ert_rtw/*.c/.h`）都已入库，**运行端不需要 MATLAB**。
 只有当你要改算法时才需要在 MATLAB 里重新生成：配置 `ert.tlc` + `HardwareBoard=None`
 + `GenCodeOnly` + 关 MAT 日志 + `Toolchain` 设为自动定位，`slbuild` 直接覆盖
-`board/model/*_ert_rtw/`，再 `make` 即可。Device Type 已设为 `ARM Cortex-A (64-bit)`。
+`board/*_ert_rtw/`，再 `make` 即可。Device Type 已设为 `ARM Cortex-A (64-bit)`。
 **生成代码不需要宿主机装任何 C 编译器**（编译在板上做），MATLAB 提示找不到
 supported compiler 可以无视。详细步骤见各实验文档；踩坑见 [Q&A](Q&A.md)。
 

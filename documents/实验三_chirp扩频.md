@@ -49,7 +49,7 @@ exp3_chirp/
 ├── Makefile           构建入口（MODEL/AUDIO 开关）
 ├── board/             板上的一切
 │   ├── main.c  model_glue.c  model_iface.h    手写运行时 + 契约
-│   ├── model/         Simulink 生成的纯算法 C
+│   ├── chirp_rev_detect_ert_rtw/    Simulink 生成的纯算法 C
 │   └── py/            bok_emit.py  bok_rev.py（免 MATLAB，在板上跑）
 ├── host/              PC 上 MATLAB 的一切
 │   ├── chirp_rev_detect.slx                   模型
@@ -66,7 +66,7 @@ exp3_chirp/
 | `board/model_glue.c` | 耦合 Simulink 符号名的薄层：`chirp_rev_detect_U.AudioIn` 输入、`chirp_rev_detect_Y.out_data` 判决。封装多速率 `step1 + 800×step0`。 |
 | `board/model_iface.h` | 契约：`MODEL_FRAME_SAMPLES=800`、`MODEL_FRAME_RATE_HZ=10` 等，`model_step_frame()` 声明。 |
 
-### `board/model/` — Simulink 生成的 C
+### `board/chirp_rev_detect_ert_rtw/` — Simulink 生成的 C
 
 | 文件 | 作用 |
 |---|---|
@@ -152,18 +152,18 @@ exp3_chirp/
 
 ## 重新生成模型（改算法后）
 
-两种等价方式，产物都落到 `board/model/chirp_rev_detect_ert_rtw/`，任选其一。
+两种等价方式，产物都落到 `board/chirp_rev_detect_ert_rtw/`，任选其一。
 
 ### 方式 A：脚本（`slbuild`，可批处理）
 
 ```matlab
 R = '<仓库根目录>';
-% .slx 在 host/，生成的 C 要落到 board/model/，所以显式指定生成目录。
+% .slx 在 host/，生成的 C 要落到 board/，所以显式指定生成目录。
 % 注意 CodeGenFolder 只能指定**父目录**，末级 chirp_rev_detect_ert_rtw 这个
 % 名字由「模型名+目标」拼出来，改不了。
 Simulink.fileGenControl('set', ...
-    'CodeGenFolder', fullfile(R,'exp3_chirp','board','model'), ...
-    'CacheFolder',   fullfile(R,'exp3_chirp','board','model'), 'createDir', true);
+    'CodeGenFolder', fullfile(R,'exp3_chirp','board'), ...
+    'CacheFolder',   fullfile(R,'exp3_chirp','board'), 'createDir', true);
 
 % 当前目录里若已有同名生成目录，Simulink 会直接拒绝构建，
 % 所以从一个空目录跑，靠 addpath 找模型。
@@ -175,7 +175,9 @@ set_param('chirp_rev_detect','HardwareBoard','None');
 set_param('chirp_rev_detect','GenCodeOnly','on');
 set_param('chirp_rev_detect','MatFileLogging','off');
 set_param('chirp_rev_detect','Toolchain','Automatically locate an installed toolchain');
-slbuild('chirp_rev_detect');     % 生成到 board/model/chirp_rev_detect_ert_rtw/
+slbuild('chirp_rev_detect');     % 生成到 board/chirp_rev_detect_ert_rtw/
+% 若打印「1 models already up to date」说明模型没改过、代码被跳过；
+% 想无条件重来加 'ForceTopModelBuild',true
 ```
 
 ### 方式 B：Simulink 界面（GUI，更直观）
