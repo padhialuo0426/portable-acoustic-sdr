@@ -59,10 +59,24 @@ flowchart LR
 ├── README.md            根说明（简介 + 许可）
 ├── LICENSE              GNU GPLv3
 ├── documents/           ← 本文档目录
-├── common/              跨实验共享的板级底层（音频 I/O + MAT 写入）
+├── common/              跨实验共享：板级底层(音频 I/O + MAT 写入) + matlab/(GUI 共用层)
 ├── exp1_single_freq/    实验一 · 单频信号测试
 ├── exp2_dpsk/           实验二 · DPSK 差分相移键控
 └── exp3_chirp/          实验三 · 线性调频(chirp)扩频通信
+
+每个实验目录固定分三块——「板上的 / PC 上的 / 两边共用的」：
+
+    exp2_dpsk/
+    ├── Makefile             板上构建入口
+    ├── board/               板上要的一切
+    │   ├── main.c  model_glue.c  model_iface.h     手写
+    │   ├── model/           Simulink 生成的 C（可整个删掉重生成）
+    │   └── py/              免 MATLAB 的板上发射/解码脚本
+    ├── host/                PC 上 MATLAB 要的
+    │   ├── dpsk_receive.slx     模型
+    │   ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
+    │   └── sample_data/         离线试解码用的样例
+    └── baseband_images/     基带图片，MATLAB 与板上 py 都读它（实验一无此项）
 ```
 
 ## 共享底层 `common/`
@@ -75,9 +89,10 @@ flowchart LR
 | `src/audio_io_null.c` | 合成 1kHz 单音后端（无声卡机器联调，编译开关 `AUDIO=null`） |
 | `src/audio_io_file.c` | 原始 int16 文件输入后端（无噪声链路验证，`AUDIO=file`） |
 | `include/mat_sink.h`、`src/mat_sink.c` | MAT-v4 流式写入器，产出与 Simulink `To File` 同格式的 `.mat` |
+| `matlab/+asdr/` | 三个 `host/gui.m` 共用的界面骨架与板上连接层（`App` / `Board` / `ImageUI`），**跑在 PC 上，不上板** |
 
 平台差异收敛到一个参数 `-d`；唯一耦合 Simulink 符号名的代码集中在各实验
-`src/model_glue.c`（重新生成模型后只需核对一处字段名）。
+`board/model_glue.c`（重新生成模型后只需核对一处字段名）。
 
 ## 三个实验对照
 
@@ -103,10 +118,10 @@ Fedora `sudo dnf install alsa-lib-devel`。交叉编译：`make CC=aarch64-linux
 
 ## 重新生成模型（改算法后，需 MATLAB）
 
-`.slx` 与生成的 C 代码（`simulink_model/*_ert_rtw/*.c/.h`）都已入库，**运行端不需要 MATLAB**。
+`.slx`（在 `host/`）与生成的 C 代码（`board/model/*_ert_rtw/*.c/.h`）都已入库，**运行端不需要 MATLAB**。
 只有当你要改算法时才需要在 MATLAB 里重新生成：配置 `ert.tlc` + `HardwareBoard=None`
 + `GenCodeOnly` + 关 MAT 日志 + `Toolchain` 设为自动定位，`slbuild` 直接覆盖
-`simulink_model/*_ert_rtw/`，再 `make` 即可。Device Type 已设为 `ARM Cortex-A (64-bit)`。
+`board/model/*_ert_rtw/`，再 `make` 即可。Device Type 已设为 `ARM Cortex-A (64-bit)`。
 **生成代码不需要宿主机装任何 C 编译器**（编译在板上做），MATLAB 提示找不到
 supported compiler 可以无视。详细步骤见各实验文档；踩坑见 [Q&A](Q&A.md)。
 

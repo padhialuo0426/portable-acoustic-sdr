@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
 """
-bok_rev.py ── 复刻 bok_rev.m 的解码：读 chirp_rx 产出的 chirp5.mat
-(toFileData5 判决流)，相关 m 序列做帧同步、硬判决、算 BER、还原图像。
+dpsk_rev.py ── 复刻 dpsk_rev.m 的解码：读 dpsk_rx 产出的 dpsk5.mat
+(toFileData5 判决流)，相关 m 序列做帧同步、直接判决、算 BER、还原图像。
 不需要 MATLAB。**支持任意尺寸图片**：从原始 BMP 自动读宽高，
 帧头/帧尾两段 m 序列间距 = 图片比特数+15，按真实宽高还原点阵。
 
-用法: python3 bok_rev.py [图片.bmp] [chirp5.mat]
-      默认 ../baseband_images/ren128b.bmp 与 ../chirp5.mat
+用法: python3 dpsk_rev.py [图片.bmp] [dpsk5.mat]
+      默认 ../../baseband_images/ren512b.bmp 与 ../../dpsk5.mat
 """
 import struct, array, sys, os
 
 here = os.path.dirname(os.path.abspath(__file__))
-bmp  = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, '..', 'baseband_images', 'ren128b.bmp')
-matf = sys.argv[2] if len(sys.argv) > 2 else os.path.join(here, '..', 'chirp5.mat')
+bmp  = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, '..', '..', 'baseband_images', 'ren512b.bmp')
+matf = sys.argv[2] if len(sys.argv) > 2 else os.path.join(here, '..', '..', 'dpsk5.mat')
 mseq_pm = [-1,1,1,-1,-1,1,-1,1,-1,-1,-1,-1,1,1,1]
 
-# 原始图片：自动宽高 + 真值比特（列优先, 与 bok_emit 一致）
+# 原始图片：自动宽高 + 真值比特（列优先，与 dpsk_emit 一致）
 d = open(bmp, 'rb').read()
 off = struct.unpack('<I', d[10:14])[0]
 w   = struct.unpack('<i', d[18:22])[0]
 h   = struct.unpack('<i', d[22:26])[0]
 H = abs(h); rowsize = ((w + 31) // 32) * 4
 def px(row, col):
-    fr = (H - 1 - row) if h > 0 else row
+    fr = (H - 1 - row) if h > 0 else row        # h>0 自底向上存储
     return (d[off + fr * rowsize + col // 8] >> (7 - col % 8)) & 1
 truth = [px(nn, mm) for mm in range(w) for nn in range(H)]
 L   = len(truth)          # 图片比特数
@@ -33,19 +33,23 @@ ty, m, n, im, nl = struct.unpack('<5i', f.read(20)); f.read(nl)
 a = array.array('d'); a.frombytes(f.read(8 * m * n))
 x = [a[k * m + 1] for k in range(n)]            # 第2行 = 判决值
 
-def find_sync(x, flag):
+# 判决值不是 ±1 而是相关幅度，门限按整段能量自适应，不写死 500
+peak = max(abs(v) for v in x) if x else 0.0
+thr  = max(peak * 0.02, 1e-9)
+
+def find_sync(flag):
     loc = []
     for nn in range(len(x) - 14):
         corr = sum(x[nn+i] * flag * mseq_pm[i] for i in range(15))
-        if corr > sum(abs(x[nn+i]) for i in range(11)) and abs(x[nn]) == 1:
+        if corr > sum(abs(x[nn+i]) for i in range(12)) and abs(x[nn]) > thr:
             loc.append(nn)
     return loc
 
 best = None
 for flag in (1, -1):
-    loc = find_sync(x, flag)
+    loc = find_sync(flag)
     for i in range(len(loc)):
-        for j in range(i+1, len(loc)):
+        for j in range(i + 1, len(loc)):
             if loc[j] - loc[i] == gap:
                 best = (flag, loc[i], loc[j]); break
         if best: break

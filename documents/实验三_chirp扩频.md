@@ -46,29 +46,34 @@ flowchart TD
 
 ```
 exp3_chirp/
-├── Makefile           构建（MODEL/AUDIO 开关）
-├── src/  include/      板级运行时 + 契约
-├── simulink_model/    多速率模型 + 生成的 C 代码
-├── baseband_images/   基带图片（待传信息）
-└── host/              PC 端 MATLAB 发射/解码/仿真 + 板上 Python 实现(免 MATLAB)
+├── Makefile           构建入口（MODEL/AUDIO 开关）
+├── board/             板上的一切
+│   ├── main.c  model_glue.c  model_iface.h    手写运行时 + 契约
+│   ├── model/         Simulink 生成的纯算法 C
+│   └── py/            bok_emit.py  bok_rev.py（免 MATLAB，在板上跑）
+├── host/              PC 上 MATLAB 的一切
+│   ├── chirp_rev_detect.slx                   模型
+│   ├── bok_emit.m  bok_rev.m  bok_sim.m  gui.m  setup_paths.m
+│   └── sample_data/   一份真实声学采集，可离线试解码
+└── baseband_images/   基带图片（待传信息），MATLAB 与板上 py 都读它
 ```
 
-### `src/` + `include/`
+### `board/` — 板上运行时
 
 | 文件 | 作用 |
 |---|---|
-| `src/main.c` | 主循环：ALSA 采集 800 样本/帧(10Hz) → 喂模型 → `model_step_frame()` → 取标量判决 → 写 `chirp5.mat`。命令行 `-d/-t/-c/-r`。 |
-| `src/model_glue.c` | 耦合 Simulink 符号名的薄层：`chirp_rev_detect_U.AudioIn` 输入、`chirp_rev_detect_Y.out_data` 判决。封装多速率 `step1 + 800×step0`。 |
-| `include/model_iface.h` | 契约：`MODEL_FRAME_SAMPLES=800`、`MODEL_FRAME_RATE_HZ=10` 等，`model_step_frame()` 声明。 |
+| `board/main.c` | 主循环：ALSA 采集 800 样本/帧(10Hz) → 喂模型 → `model_step_frame()` → 取标量判决 → 写 `chirp5.mat`。命令行 `-d/-t/-c/-r`。 |
+| `board/model_glue.c` | 耦合 Simulink 符号名的薄层：`chirp_rev_detect_U.AudioIn` 输入、`chirp_rev_detect_Y.out_data` 判决。封装多速率 `step1 + 800×step0`。 |
+| `board/model_iface.h` | 契约：`MODEL_FRAME_SAMPLES=800`、`MODEL_FRAME_RATE_HZ=10` 等，`model_step_frame()` 声明。 |
 
-### `simulink_model/` — 模型与生成代码
+### `board/model/` — Simulink 生成的 C
 
 | 文件 | 作用 |
 |---|---|
 | `chirp_rev_detect.slx` | 接收模型：LFM 相关检测（含 15 个 Stateflow，**多速率**）。 |
 | `chirp_rev_detect_ert_rtw/*.c/.h` | 生成的纯算法 C（零支持包/零 rt_logging）。 |
 
-**模型接口**（`src/model_glue.c` 按这几个名字取值，改了要同步改那里）：
+**模型接口**（`board/model_glue.c` 按这几个名字取值，改了要同步改那里）：
 
 - 输入：**Inport `AudioIn`**，`int16[1600]` = 800 样本 × 2 声道，布局 `[L0..799, R0..799]`。
 - 输出：**Outport `out_data`**，标量——每 0.1s 符号的判决值。
@@ -87,7 +92,7 @@ exp3_chirp/
 
 > 当前生成的 `chirp_rev_detect_step0()` 实际是**空函数**——算法全部落在 TID1，
 > 所以先 step1 后 step0 与顺序无关。若改模型让 TID0 真有内容，需按 ERT 标准
-> `rt_OneStep` 的次序改成「基速率先跑」（`src/model_glue.c` 里已留注释）。
+> `rt_OneStep` 的次序改成「基速率先跑」（`board/model_glue.c` 里已留注释）。
 
 ### `baseband_images/` — 基带图片
 
@@ -147,12 +152,22 @@ exp3_chirp/
 
 ## 重新生成模型（改算法后）
 
-两种等价方式，产物都落到 `chirp_rev_detect_ert_rtw/`，任选其一。
+两种等价方式，产物都落到 `board/model/chirp_rev_detect_ert_rtw/`，任选其一。
 
 ### 方式 A：脚本（`slbuild`，可批处理）
 
 ```matlab
-cd <exp3_chirp/simulink_model>
+R = '<仓库根目录>';
+% .slx 在 host/，生成的 C 要落到 board/model/，所以显式指定生成目录。
+% 注意 CodeGenFolder 只能指定**父目录**，末级 chirp_rev_detect_ert_rtw 这个
+% 名字由「模型名+目标」拼出来，改不了。
+Simulink.fileGenControl('set', ...
+    'CodeGenFolder', fullfile(R,'exp3_chirp','board','model'), ...
+    'CacheFolder',   fullfile(R,'exp3_chirp','board','model'), 'createDir', true);
+
+% 当前目录里若已有同名生成目录，Simulink 会直接拒绝构建，
+% 所以从一个空目录跑，靠 addpath 找模型。
+cd(tempdir);  addpath(fullfile(R,'exp3_chirp','host'));
 load_system('chirp_rev_detect')
 % …如需改算法在此修改…
 set_param('chirp_rev_detect','SystemTargetFile','ert.tlc');
@@ -160,7 +175,7 @@ set_param('chirp_rev_detect','HardwareBoard','None');
 set_param('chirp_rev_detect','GenCodeOnly','on');
 set_param('chirp_rev_detect','MatFileLogging','off');
 set_param('chirp_rev_detect','Toolchain','Automatically locate an installed toolchain');
-slbuild('chirp_rev_detect');     % 代码直接生成到 chirp_rev_detect_ert_rtw/
+slbuild('chirp_rev_detect');     % 生成到 board/model/chirp_rev_detect_ert_rtw/
 ```
 
 ### 方式 B：Simulink 界面（GUI，更直观）
@@ -187,7 +202,7 @@ GUI 方式就是把上面 `set_param` + `slbuild` 用菜单点出来，产物完
 
 > 本模型含 15 个 Stateflow、且为**多速率**（`step0`@8000Hz + `step1`@10Hz），
 > 生成时间比实验一长属正常。生成后若 Inport/Outport 名字变了，同步改
-> `src/model_glue.c` 一处即可。
+> `board/model_glue.c` 一处即可。
 
 ## 构建与运行
 
@@ -209,7 +224,7 @@ arecord -l                                # 先看麦克风是 card 几
 ```bash
 IMG=baseband_images/lzu2048b.bmp          # 换任意图片；缺省 ren128b.bmp
 
-python3 host/bok_emit.py $IMG             # 生成发射信号 + 打印建议 -t
+python3 board/py/bok_emit.py $IMG             # 生成发射信号 + 打印建议 -t
 
 # A) 文件直喂（无声学噪声，纯测 DSP/解码）
 make AUDIO=file && ./build/chirp_rx -d chirp_tx.raw
@@ -217,7 +232,7 @@ make AUDIO=file && ./build/chirp_rx -d chirp_tx.raw
 # B) 真实声学（扬声器播放 + 麦克风采集；-t 用建议值）
 make && (aplay -q chirp_tx.wav &) ; ./build/chirp_rx -d plughw:2,0 -t 24
 
-python3 host/bok_rev.py $IMG              # 帧同步 + BER + 还原图像
+python3 board/py/bok_rev.py $IMG              # 帧同步 + BER + 还原图像
 ```
 
 ### 在 PC 上用 MATLAB 跑（效果等价）

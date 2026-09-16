@@ -7,7 +7,7 @@ dpsk_emit.py ── 复刻 dpsk_emit.m 的 DPSK 发射，生成测试信号。
   dpsk_tx.wav  (8kHz 单声道, 用 `aplay dpsk_tx.wav` 经扬声器发射)
   tx_truth.txt (发送的全部图片比特真值, 供解码算 BER)
 
-用法: python3 dpsk_emit.py [图片.bmp]    # 默认 ../baseband_images/ren512b.bmp
+用法: python3 dpsk_emit.py [图片.bmp]    # 默认 ../../baseband_images/ren512b.bmp
 """
 import struct, math, wave, sys, os, random
 
@@ -22,7 +22,7 @@ GUARD = 80                            # 帧尾保护符号：必须盖过模型�
 m_seq = [1,0,0,1,1,0,1,0,1,1,1,1,0,0,0]
 
 here = os.path.dirname(os.path.abspath(__file__))
-bmp = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, '..', 'baseband_images', 'ren512b.bmp')
+bmp = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, '..', '..', 'baseband_images', 'ren512b.bmp')
 
 # 读 1-bit BMP（自动宽高）。列优先: info_all((m-1)*NN+n)=data(n,m)
 d = open(bmp, 'rb').read()
@@ -90,10 +90,10 @@ for i, v in enumerate(sq):
     pcm.append(max(-32768, min(32767, int(s))))
 
 raw = struct.pack('<%dh' % len(pcm), *pcm)
-open(os.path.join(here, '..', 'dpsk_tx.raw'), 'wb').write(raw)
-wv = wave.open(os.path.join(here, '..', 'dpsk_tx.wav'), 'wb')
+open(os.path.join(here, '..', '..', 'dpsk_tx.raw'), 'wb').write(raw)
+wv = wave.open(os.path.join(here, '..', '..', 'dpsk_tx.wav'), 'wb')
 wv.setnchannels(1); wv.setsampwidth(2); wv.setframerate(fs); wv.writeframes(raw); wv.close()
-open(os.path.join(here, '..', 'tx_truth.txt'), 'w').write(''.join(map(str, info_all)))
+open(os.path.join(here, '..', '..', 'tx_truth.txt'), 'w').write(''.join(map(str, info_all)))
 dur = len(pcm) / fs
 print(f'图片={os.path.basename(bmp)} {w}x{H}={L}位  符号数={code} '
       f'时长={dur:.1f}s -> dpsk_tx.raw/.wav, tx_truth.txt')
