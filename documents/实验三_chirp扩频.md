@@ -48,11 +48,11 @@ flowchart TD
 exp3_chirp/
 ├── Makefile           构建入口（MODEL/AUDIO 开关）
 ├── board/             板上的一切
+│   ├── chirp_rev_detect.slx        Simulink 模型（只在 PC 上打开）
 │   ├── main.c  model_glue.c  model_iface.h    手写运行时 + 契约
 │   ├── chirp_rev_detect_ert_rtw/    Simulink 生成的纯算法 C
 │   └── py/            bok_emit.py  bok_rev.py（免 MATLAB，在板上跑）
 ├── host/              PC 上 MATLAB 的一切
-│   ├── chirp_rev_detect.slx                   模型
 │   ├── bok_emit.m  bok_rev.m  bok_sim.m  gui.m  setup_paths.m
 │   └── sample_data/   一份真实声学采集，可离线试解码
 └── baseband_images/   基带图片（待传信息），MATLAB 与板上 py 都读它
@@ -62,9 +62,10 @@ exp3_chirp/
 
 | 文件 | 作用 |
 |---|---|
-| `board/main.c` | 主循环：ALSA 采集 800 样本/帧(10Hz) → 喂模型 → `model_step_frame()` → 取标量判决 → 写 `chirp5.mat`。命令行 `-d/-t/-c/-r`。 |
-| `board/model_glue.c` | 耦合 Simulink 符号名的薄层：`chirp_rev_detect_U.AudioIn` 输入、`chirp_rev_detect_Y.out_data` 判决。封装多速率 `step1 + 800×step0`。 |
-| `board/model_iface.h` | 契约：`MODEL_FRAME_SAMPLES=800`、`MODEL_FRAME_RATE_HZ=10` 等，`model_step_frame()` 声明。 |
+| `chirp_rev_detect.slx` | 接收模型：LFM 相关检测（含 15 个 Stateflow，**多速率**）。**它只在 PC 上用 Simulink 打开、生成下面那份 C**，不会被同步到板上。 |
+| `main.c` | 主循环：ALSA 采集 800 样本/帧(10Hz) → 喂模型 → `model_step_frame()` → 取标量判决 → 写 `chirp5.mat`。命令行 `-d/-t/-c/-r`。 |
+| `model_glue.c` | 耦合 Simulink 符号名的薄层：`chirp_rev_detect_U.AudioIn` 输入、`chirp_rev_detect_Y.out_data` 判决。封装多速率 `step1 + 800×step0`。 |
+| `model_iface.h` | 契约：`MODEL_FRAME_SAMPLES=800`、`MODEL_FRAME_RATE_HZ=10` 等，`model_step_frame()` 声明。 |
 
 ### `board/chirp_rev_detect_ert_rtw/` — Simulink 生成的 C
 
@@ -121,7 +122,6 @@ exp3_chirp/
 
 | 文件 | 作用 | 关键数据 |
 |---|---|---|
-| `chirp_rev_detect.slx` | 接收模型：LFM 相关检测（含 15 个 Stateflow，**多速率**）。 生成代码落在 `../board/`，见下面「重新生成模型」。 | — |
 | `bok_emit.m` | 发射：读图（顶部 `img_name` 可切换，默认 `ren128b.bmp`）→ 自适应组帧 → `sound()` 播放 | 写 `info_all.mat` |
 | `bok_rev.m` | 解码：读 `chirp5.mat` 帧同步/硬判决/BER/`imshow` 还原 | 读 `chirp5.mat` + `info_all.mat`；`img_name` 须与发送一致 |
 | `gui.m` | **一键声学实测图形界面**（可选）：自检（连接 + 枚举采集设备）→ 同步源码到板上并编译 → 电平校准 → 板上启动采集/本机放音/取回/解码一次点完。见[手把手教程 4.5](手把手部署运行教程.md)。 |
@@ -160,8 +160,7 @@ exp3_chirp/
 R = '<仓库根目录>';
 % ★ 代码生成到哪，由 MATLAB 的**当前文件夹**决定（Simulink 的「代码生成
 %   文件夹」默认就是当前文件夹）。先 cd 到 board/，产物自然落在这里。
-cd(fullfile(R,'exp3_chirp','board'));
-addpath(fullfile(R,'exp3_chirp','host'));     % .slx 在 host/，加进路径才找得到
+cd(fullfile(R,'exp3_chirp','board'));   % 模型和生成目录都在这儿
 load_system('chirp_rev_detect')
 % …如需改算法在此修改…
 set_param('chirp_rev_detect','SystemTargetFile','ert.tlc');
@@ -183,7 +182,7 @@ slbuild('chirp_rev_detect');     % 生成到 board/chirp_rev_detect_ert_rtw/
 
 GUI 方式就是把上面 `set_param` + `slbuild` 用菜单点出来，产物完全一致。
 
-1. 打开 `host/chirp_rev_detect.slx`。
+1. 打开 `chirp_rev_detect.slx`（就在当前文件夹里）。
 2. 顶部 **APPS → Embedded Coder**，工具条出现 **C CODE** 选项卡。
 3. `Ctrl+E` 打开 **Configuration Parameters**，对齐下表（与方式 A 一一对应）：
 

@@ -41,12 +41,12 @@ arecord -l                           # 看麦克风是 card 几
 
     exp2_dpsk/
     ├── Makefile             板上构建入口
-    ├── board/               板上要的一切
+    ├── board/               板上要的一切（外加生成它的 Simulink 模型）
+    │   ├── dpsk_receive.slx     模型：只在 PC 上打开，不上板
     │   ├── main.c  model_glue.c  model_iface.h     手写
-    │   ├── *_ert_rtw/       Simulink 生成的 C（可整个删掉重生成）
+    │   ├── *_ert_rtw/       模型生成的 C（可整个删掉重生成）
     │   └── py/              免 MATLAB 的板上发射/解码脚本
     ├── host/                PC 上 MATLAB 要的
-    │   ├── dpsk_receive.slx     模型
     │   ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
     │   └── sample_data/         离线试解码用的样例
     └── baseband_images/     基带图片，MATLAB 与板上 py 都读它（实验一无此项）
