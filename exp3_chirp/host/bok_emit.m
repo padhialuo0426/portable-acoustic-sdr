@@ -61,4 +61,15 @@ end
 
 %% 产生声音 %%
 fprintf('发送 %s  %dx%d=%d 位  符号数=%d  时长=%.1fs\n', img_name, MM, NN, L, code, code*T);
+fprintf('板上采集建议: ./build/chirp_rx -d plughw:2,0 -t %d\n', ceil(code*T)+6);
 sound(real(LFM),fs)
+
+%% 顺带导出 raw，供板上「文件直喂」无噪声验证 %%
+% chirp_tx.raw 是单声道 int16，与 sound() 播放的是同一段波形。拷到板上后：
+%   make AUDIO=file && ./build/chirp_rx -d chirp_tx.raw
+% 这条链路不经过扬声器和麦克风，用来把「算法/编译错」和「采集错」分开（见 Q&A Q15）。
+raw_path = fullfile(here,'..','chirp_tx.raw');
+raw = int16(round(real(LFM) * 10000));     % real(LFM) 幅度为 ±1
+fid = fopen(raw_path, 'wb');
+fwrite(fid, raw, 'int16');  fclose(fid);
+fprintf('已写 chirp_tx.raw（%d 样本，供 make AUDIO=file 文件直喂）\n', numel(raw));

@@ -36,14 +36,13 @@ flowchart LR
     spk["PC：扬声器"]
     mic["板上：麦克风"]
     rx["开发板：接收端 C 程序<br/>ALSA 采集 → 模型 → 判决 → 写 .mat"]
-    dec["PC：解码/还原<br/>bok_rev.m / spectrum.m / python"]
+    dec["PC：解码/还原<br/>bok_rev.m / dpsk_rev.m / spectrum.m"]
 
     emit --> spk -->|"空气(声学信道)"| mic --> rx
     rx -->|"用 scp/FileZilla 把 .mat 从 Linux 板子传回 PC"| dec
 ```
 
 - **发射端**（`host/`）：纯 PC MATLAB，用 `sound()` 经声卡播放。
-  实验二/三另提供免 MATLAB 的 Python 版（`host/dpsk_emit.py`、`host/bok_emit.py`）。
   三个实验各有一个可选的 `host/gui.m`，把「连接/枚举采集设备 + 同步源码上板并编译 +
   电平校准 + 启动采集/放音/取回/解码」串成四次点击（手动流程仍是教学正路，
   见 [Q&A](Q&A.md) Q9）。
