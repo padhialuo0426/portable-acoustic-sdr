@@ -52,7 +52,7 @@ exp2_dpsk/
 ├── src/               手写 C：main.c  model_glue.c  model_iface.h
 ├── py/                dpsk_emit.py  dpsk_rev.py（免 MATLAB，在板上跑）
 ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
-├── sample_data/       一份真实声学采集，可离线试解码
+├── sample_data/       真实声学采集 + 对应发送真值，可离线试解码
 └── baseband_images/   基带图片（待传信息），MATLAB 与板上 py 都读它
 ```
 
@@ -127,7 +127,7 @@ exp2_dpsk/
 | `dpsk_rev.m` | 解码：读 `dpsk5.mat` 帧同步/判决/BER/`imshow` 还原 | 读 `dpsk5.mat` + `info_all.mat`；`img_name` 须与发送一致 |
 | `gui.m` | **一键声学实测图形界面**（可选）：自检（连接 + 枚举采集设备）→ 同步源码到板上并编译 → 电平校准 → 板上启动采集/本机放音/取回/解码一次点完。见[手把手教程 4.5](手把手部署运行教程.md)。 |
 | `setup_paths.m` | 把脚本/图片/模型目录加入 MATLAB 路径 | — |
-| `sample_data/` | 一份**真实声学采集**的样例 `dpsk5.mat`（发的是 `ren512b.bmp`），无需板子即可离线试解码 | BER≈0.008（4/512），**非 0 属正常**——这是带信道噪声的真实录音 |
+| `sample_data/` | 一组样例：`dpsk5.mat`（一次**真实声学采集**，发的是 `ren512b.bmp`）+ `info_all.mat`（对应的发送真值，由该 BMP 展开而来），无需板子即可离线试解码 | BER≈0.008（4/512），**非 0 属正常**——这是带信道噪声的真实录音 |
 
 ### `py/` — 板上 Python 实现（与上面 `.m` 同名配对）
 
@@ -182,6 +182,10 @@ python3 py/dpsk_rev.py $IMG             # 帧同步 + BER + 还原图像
 
 把 `dpsk_emit.m` 与 `dpsk_rev.m` 顶部 `img_name` 改成同一张图；`dpsk_emit` 发射、
 板上 `dpsk_rx` 采集、`scp` 取回 `dpsk5.mat` 到实验目录、`dpsk_rev` 解码。
+
+离线试解码（没有板子也能跑）：把 `sample_data/` 下的 `dpsk5.mat` 和 `info_all.mat`
+一起拷到实验目录，`img_name` 保持默认的 `ren512b.bmp`，直接跑 `dpsk_rev` 即可
+（两个文件缺一不可——`dpsk_rev` 要靠 `info_all.mat` 算 BER）。
 
 ## 重新生成模型（改算法后）
 
