@@ -49,7 +49,7 @@ flowchart LR
   实验二/三另提供免 MATLAB 的 Python 版（`host/dpsk_emit.py`、`host/bok_emit.py`）。
   三个实验各有一个可选的 `host/gui.m`，把「连接/枚举采集设备 + 同步源码上板并编译 +
   电平校准 + 启动采集/放音/取回/解码」串成四次点击（手动流程仍是教学正路，
-  见 [Q&A](Q&A.md) Q8）。
+  见 [Q&A](Q&A.md) Q9）。
 - **接收端**（板上 C）：移植的核心。Simulink 只负责生成**纯算法 C**，音频 I/O、
   落盘、调度全部由手写的 POSIX/ALSA 代码（`common/`）承担。
 - **取文件**：接收端把 `.mat` 写到板上本地盘，用标准 **`scp`/FileZilla** 拉回 PC。
