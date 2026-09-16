@@ -48,13 +48,18 @@ classdef Board < handle
         end
 
         % 用字节流保存完整输出；轮询通道结束，避免 readLine 阻塞 UI。
+        %
+        % 命令一律套一层 sh -c：JSch 的 exec 通道是拿**用户的登录 shell**跑命令的，
+        % 而登录 shell 因人而异（实测树莓派是 bash、Arch 主机是 zsh）。zsh 默认开
+        % nomatch——通配符匹配不到文件时整条命令直接报错中止，bash/dash 则是把
+        % 字面量原样传下去。不固定成 sh，同一条命令在两台板子上行为就会不一样。
         function [st, out] = exec(o, cmd)
             st = 255;
             try
                 s  = o.session();
                 ch = s.openChannel('exec');
                 closer = onCleanup(@() ch.disconnect());
-                ch.setCommand(sprintf('{ %s ; } 2>&1', cmd));
+                ch.setCommand(sprintf('sh -c %s 2>&1', asdr.shellQuote(cmd)));
                 bytes = java.io.ByteArrayOutputStream();
                 ch.setOutputStream(bytes);
                 ch.connect(10000);

@@ -211,6 +211,7 @@ classdef App < handle
                 % 语义应当是"显示的一切都是刚刚验证过的"。
                 app.rdir.Value = '';  app.rdir.Enable = 'off';
                 app.clearCapture();
+                app.syncCreds();            % 先同步再取显示串，见 syncCreds 注释
                 tgt = app.board.target();
                 % hostname 不是 POSIX 命令，Arch、精简 Debian、多数容器镜像都不装它
                 % （远端 shell 会报 command not found，退出码 127，于是连接本来好好的
@@ -383,12 +384,20 @@ classdef App < handle
         %% ---------------- 板上交互 ----------------
 
         function [st, out] = ssh(app, cmd)
-            app.board.setCredentials(app.host.Value, app.user.Value, app.pass.Value);
+            app.syncCreds();
             [st, out] = app.board.exec(cmd);
         end
 
-        function ok = ensureConn(app)
+        % 把三个输入框的当前值推给 Board。凡是要读 board.target() 作显示的地方，
+        % 都得先调它——否则改了 IP 之后第一次点「① 自检」，日志里打印的还是上
+        % 一次那个地址（Board.Host 要等到真正发命令时才被更新），显示的地址和
+        % 实际连上的机器对不上。
+        function syncCreds(app)
             app.board.setCredentials(app.host.Value, app.user.Value, app.pass.Value);
+        end
+
+        function ok = ensureConn(app)
+            app.syncCreds();
             [ok, msg] = app.board.probe();
             if ~ok
                 app.logStep(sprintf('连接 %s', app.board.target()), '✗', '%s', msg);
@@ -430,7 +439,7 @@ classdef App < handle
         end
 
         function [done, ok] = jobStatus(app)
-            app.board.setCredentials(app.host.Value, app.user.Value, app.pass.Value);
+            app.syncCreds();
             [done, ok, code, detail] = app.board.jobStatus();
             if done && ~ok
                 app.logStep('板上采集', '✗', '退出码 %s：%s', code, detail);
@@ -493,9 +502,14 @@ classdef App < handle
             % --exclude='._*'：macOS 的扩展属性会被 MATLAB 的 tar 打成 AppleDouble
             % 条目，解包后变成一堆 ._xxx.c 垃圾文件。它们不会被编进去（GNU make 的
             % wildcard 用 glob，* 不匹配点开头的文件），但没必要留在板上。
+            % 用 find 而不是 board/*_ert_rtw 通配：首次部署时板上还没有这个目录，
+            % 通配匹配不到东西，而这条命令是拿远端 shell 跑的——zsh 会直接报
+            % 「no matches found」把整条链掐断（实测 Arch 主机上就是这样）。
+            % find 明确按名字删，目录不存在时也不中断。
             [st, out] = app.ssh(sprintf(['tar tzf %s >/dev/null && mkdir -p %s && ' ...
-                                    'rm -rf %s/%s/board/*_ert_rtw && tar xzf %s -C %s ' ...
-                                    '--exclude=''._*'' && rm -f %s'], ...
+                                    '{ find %s/%s/board -maxdepth 1 -name ''*_ert_rtw'' ' ...
+                                    '-exec rm -rf {} + 2>/dev/null || true; } && ' ...
+                                    'tar xzf %s -C %s --exclude=''._*'' && rm -f %s'], ...
                                    asdr.shellQuote(remoteTar), remoteRoot, remoteRoot, expName, ...
                                    asdr.shellQuote(remoteTar), remoteRoot, asdr.shellQuote(remoteTar)));
             if st ~= 0, app.logStep('同步源码', '✗', '板上解包失败：%s', asdr.firstLine(out)); return, end
