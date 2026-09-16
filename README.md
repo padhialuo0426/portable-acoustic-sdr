@@ -20,12 +20,24 @@
 
 ## 快速开始
 
+**先在 PC 的 MATLAB 里生成一次模型代码**——仓库里只有 `.slx`，Simulink 生成的 C
+[不入库](#目录结构)，不生成的话板上 `make` 会报 `chirp_rev_detect.h: No such file`：
+
+```matlab
+cd exp3_chirp            % 代码生成到当前文件夹，务必先 cd
+open chirp_rev_detect.slx    % 然后按 Ctrl+B，产物落在 chirp_rev_detect_ert_rtw/
+```
+
+再把源码传到板上（见[手把手教程](documents/手把手部署运行教程.md)第 2 节），在**板上**：
+
 ```bash
 cd exp3_chirp
 make                                 # 需 libasound2-dev（apt install / dnf install alsa-lib-devel）
 arecord -l                           # 看麦克风是 card 几
 ./build/chirp_rx -d plughw:1,0 -t 28 # card 号按实际改
 ```
+
+> 没有 MATLAB 也想先跑通管线：`make MOCK=1` 用桩模型 + 合成音频，不需要生成代码。
 
 ## 目录结构
 
@@ -37,8 +49,9 @@ arecord -l                           # 看麦克风是 card 几
 ├── exp2_dpsk/           实验二 · DPSK 差分相移键控
 └── exp3_chirp/          实验三 · chirp 扩频通信
 
-每个实验目录是扁平的，只有 `src/`（手写 C）和 `py/`（板上脚本）两个子目录，
-`.slx` 与各 `.m` 脚本都在根下：
+每个实验目录是扁平的，`.slx` 与各 `.m` 脚本都直接放在根下，子目录只有
+`src/`（手写 C）和 `py/`（板上脚本）这两类代码，外加存数据的 `sample_data/`
+与 `baseband_images/`（实验一只有 `src/`）：
 
     exp2_dpsk/
     ├── Makefile             板上构建入口

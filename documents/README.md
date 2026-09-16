@@ -64,8 +64,9 @@ flowchart LR
 ├── exp2_dpsk/           实验二 · DPSK 差分相移键控
 └── exp3_chirp/          实验三 · 线性调频(chirp)扩频通信
 
-每个实验目录是扁平的，只有 `src/`（手写 C）和 `py/`（板上脚本）两个子目录，
-`.slx` 与各 `.m` 脚本都在根下：
+每个实验目录是扁平的，`.slx` 与各 `.m` 脚本都直接放在根下，子目录只有
+`src/`（手写 C）和 `py/`（板上脚本）这两类代码，外加存数据的 `sample_data/`
+与 `baseband_images/`（实验一只有 `src/`）：
 
     exp2_dpsk/
     ├── Makefile             板上构建入口
