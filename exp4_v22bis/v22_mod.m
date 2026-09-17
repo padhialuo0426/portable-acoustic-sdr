@@ -15,9 +15,10 @@ function [x, sym] = v22_mod(bits, P)
 
     bits = bits(:).';
 
-    % --- 前导 + 数据，一起过扰码器 ---
+    % --- 前导 + 数据 + 后导，一起过扰码器 ---
     pre  = ones(1, P.preambleSyms * P.bps);
-    src  = [pre, bits];
+    post = ones(1, P.postambleSyms * P.bps);
+    src  = [pre, bits, post];
 
     % 末尾补零凑整符号
     r = mod(numel(src), P.bps);
