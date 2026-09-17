@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <alsa/asoundlib.h>
 
 struct audio_dev {
@@ -93,37 +94,58 @@ audio_dev_t *audio_playback_open(const char *device, unsigned sample_rate,
 int audio_capture_read(audio_dev_t *d, int16_t *buf, unsigned frames)
 {
     if (!d) return -1;
-    snd_pcm_sframes_t n = snd_pcm_readi(d->pcm, buf, frames);
-    if (n < 0) {
-        /* overrun 等可恢复错误：复位后重试一次 */
-        n = snd_pcm_recover(d->pcm, (int)n, 1);
-        if (n == 0)
-            n = snd_pcm_readi(d->pcm, buf, frames);
+    unsigned done = 0;
+    while (done < frames) {
+        snd_pcm_sframes_t n = snd_pcm_readi(d->pcm, buf + done * d->channels,
+                                           frames - done);
+        if (n == -EINTR) return (int)n; /* 交给主循环处理 Ctrl-C/TERM */
+        if (n < 0) {
+            int err = snd_pcm_recover(d->pcm, (int)n, 1);
+            if (err < 0) {
+                fprintf(stderr, "audio_io: 采集读取失败: %s\n", snd_strerror(err));
+                return err;
+            }
+            /* xrun 使时间不连续，重新收集完整帧，避免拼接恢复前后的片段。 */
+            done = 0;
+            continue;
+        }
+        if (n == 0) {
+            fprintf(stderr, "audio_io: 采集未返回数据\n");
+            return -EIO;
+        }
+        done += (unsigned)n;
     }
-    if (n < 0)
-        fprintf(stderr, "audio_io: 采集读取失败: %s\n", snd_strerror((int)n));
-    return (int)n;
+    return (int)done;
 }
 
 int audio_playback_write(audio_dev_t *d, const int16_t *buf, unsigned frames)
 {
     if (!d) return -1;
-    snd_pcm_sframes_t n = snd_pcm_writei(d->pcm, buf, frames);
-    if (n < 0) {
-        n = snd_pcm_recover(d->pcm, (int)n, 1);
-        if (n == 0)
-            n = snd_pcm_writei(d->pcm, buf, frames);
+    unsigned done = 0;
+    while (done < frames) {
+        snd_pcm_sframes_t n = snd_pcm_writei(d->pcm, buf + done * d->channels,
+                                            frames - done);
+        if (n == -EINTR) return (int)n;
+        if (n < 0) {
+            int err = snd_pcm_recover(d->pcm, (int)n, 1);
+            if (err < 0) {
+                fprintf(stderr, "audio_io: 播放写入失败: %s\n", snd_strerror(err));
+                return err;
+            }
+            continue;
+        }
+        if (n == 0) return -EIO;
+        done += (unsigned)n;
     }
-    if (n < 0)
-        fprintf(stderr, "audio_io: 播放写入失败: %s\n", snd_strerror((int)n));
-    return (int)n;
+    return (int)done;
 }
 
 void audio_close(audio_dev_t *d)
 {
     if (!d) return;
     if (d->pcm) {
-        snd_pcm_drain(d->pcm);
+        if (d->stream == SND_PCM_STREAM_CAPTURE) snd_pcm_drop(d->pcm);
+        else snd_pcm_drain(d->pcm);
         snd_pcm_close(d->pcm);
     }
     free(d);

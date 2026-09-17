@@ -51,6 +51,14 @@ python3 -c "import wave,struct,math;w=wave.open(open('/tmp/m.wav','rb'));n=w.get
 amixer -c <card> sset <控件> 70% cap      # 控件名因声卡而异，先 amixer -c <card> scontrols 查
 ```
 
+峰值正常仍有误码时，可用接收程序的 `-r raw.mat` 保留模型处理前的采样。若停音后
+仍有明显长时间拖尾，应检查声卡的混响、回声、变声等效果；这些实体控制不一定会
+出现在 ALSA 混音器里。不要仅靠调大音量判断线路已正常。
+
+用 3.5mm 线缆直连时，在 GUI「输出设备」中明确选择有线耳机/线路输出（macOS 常为
+`External Headphones`），然后校准电平。GUI 默认偏向扬声器；`sound()` 脚本则使用
+系统默认输出，因此仅插上线缆并不能保证选中了正确通路。
+
 ### Q6. 大图解不出，小图却正常
 
 **原因**：采集时长 `-t` 不够，帧尾还没采到就停了。
@@ -136,28 +144,29 @@ set_param(mdl,'Toolchain','Automatically locate an installed toolchain');
 Simulink.exportToVersion('dpsk_receive','dpsk_receive.slx','R2022A');
 ```
 
-否则实验室的机器就打不开了。实测三个模型（含实验三的 15 个 Stateflow）导出后
-**没有任何特性丢失**，R2022a 打开、重新生成代码、编译、解码 BER 均正常。
+否则实验室的机器就打不开了。本轮修复后，三个模型均导出为 R2022a 文件格式，再用
+R2025b 重新打开、生成代码并验证。当前环境没有 R2022a，本轮未复测该版本的代码生成。
 
 ### Q13b. R2022a 重新生成的代码能用吗？
 
-能，但**必须显式设 `RootIOFormat`**：
+板级接口要求 **`RootIOFormat=Part of model data structure`**。仓库中的三个模型已保存
+该值；使用旧模型或修改配置时，可显式设置：
 
 ```matlab
 set_param(模型名,'RootIOFormat','Part of model data structure');
 ```
 
-不设的话 R2022a 会按 `Individual arguments` 生成，产出的代码里**根本没有
+若仍保存为 `Individual arguments`，R2022a 产出的代码里**没有
 `ExtU`/`ExtY` 结构体**，而板级 `src/model_glue.c` 正是按 `<模型>_U.AudioIn` /
 `<模型>_Y.out_data` 取值的，编译必然失败。各实验文档「重新生成模型」一节的
 脚本里已经带上这一行。
 
-设好之后 R2022a 生成的代码与 R2025b 的**内部临时变量名不同但功能一致**——
-实测直接替换进工程，零改动编译通过，DPSK 512 位与 2048 位图 BER 均为 0。
+更换 MATLAB 版本后，应重新生成全部模型，验证生成接口、帧边界及全部图片的解码
+结果；不要仅凭模型能打开就判断代码生成兼容。
 
 生成时可能看到 `DesignFlags`、`fmethod.butterbp`、`fdopts.sosscaling` 之类的
-警告，那是 DSP 滤波器设计对象在跨版本反序列化时的提示，**不影响滤波器系数**
-（实测 BER=0 即证）。
+警告，那是 DSP 滤波器设计对象在跨版本反序列化时的提示。应结合代码生成结果和
+回归测试判断是否可用，不能仅凭警告名称忽略问题。
 
 ### Q14. MATLAB 脚本中文注释乱码
 

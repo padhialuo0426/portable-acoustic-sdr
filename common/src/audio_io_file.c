@@ -40,7 +40,12 @@ int audio_capture_read(audio_dev_t *d, int16_t *buf, unsigned frames)
     if (!d || !d->fp) return -1;
     for (unsigned i = 0; i < frames; ++i) {
         int16_t mono;
-        if (fread(&mono, sizeof(int16_t), 1, d->fp) != 1) {
+        size_t bytes = fread(&mono, 1, sizeof mono, d->fp);
+        if (bytes != sizeof mono) {
+            if (ferror(d->fp) || bytes != 0) {
+                fprintf(stderr, "audio_io_file: 读取失败或末尾不足一个 int16 样本\n");
+                return -1;
+            }
             /* EOF：把本帧剩余部分补零，避免上一帧残留数据被当成有效样本
                喂进模型（主循环把任何 n>0 都当满帧处理）。 */
             memset(&buf[i * d->channels], 0,

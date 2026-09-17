@@ -14,6 +14,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <signal.h>
 #include <getopt.h>
 
@@ -76,6 +77,13 @@ int main(int argc, char **argv)
     mat_sink_t *raw_sink = raw_path ? mat_sink_open(raw_path, "rawAudio",
                                                     MODEL_FRAME_SAMPLES) : NULL;
 
+    if (!sink || (raw_path && !raw_sink)) {
+        mat_sink_close(sink);
+        mat_sink_close(raw_sink);
+        audio_close(cap);
+        return 1;
+    }
+    int result = 0;
     model_init();
     if (max_frames)
         fprintf(stderr, "运行中：采集=%s 8000Hz 帧长80 帧率%dHz  采集 %.1f 秒后停止\n",
@@ -93,8 +101,16 @@ int main(int argc, char **argv)
 
     while (!g_stop && !model_stop_requested()) {
         if (max_frames && frame >= max_frames) break;
+        memset(inter, 0, sizeof inter); /* 防止后端半帧返回时混入旧采样 */
         int n = audio_capture_read(cap, inter, MODEL_FRAME_SAMPLES);
-        if (n <= 0) break;
+        if (n < 0) {
+            if (!g_stop) {
+                fprintf(stderr, "采集失败，输出可能不完整\n");
+                result = 1;
+            }
+            break;
+        }
+        if (n == 0 || g_stop) break;
 
         /* 去交织 -> 模型输入 [L0..79, R0..79]。
            单声道(cap_ch=1)：左右都填该单声道；立体声(cap_ch=2)：取左/右两路 */
@@ -106,22 +122,32 @@ int main(int argc, char **argv)
         if (raw_sink) {
             for (int i = 0; i < MODEL_FRAME_SAMPLES; ++i)
                 raw_col[i] = (double)(in[i] + in[i + MODEL_FRAME_SAMPLES]);
-            mat_sink_write_col(raw_sink, raw_col);
+            if (mat_sink_write_col(raw_sink, raw_col) < 0) {
+                result = 1;
+                break;
+            }
         }
 
         model_step_frame();
 
         col[0] = (double)frame / MODEL_FRAME_RATE_HZ;   /* 时间 */
         col[1] = model_output();                        /* 判决值 */
-        if (sink) mat_sink_write_col(sink, col);
+        if (mat_sink_write_col(sink, col) < 0) {
+            result = 1;
+            break;
+        }
         frame++;
     }
 
     fprintf(stderr, "正在停止... 共 %lu 帧 (%.2f 秒)\n",
             frame, (double)frame / MODEL_FRAME_RATE_HZ);
+    if (model_stop_requested()) {
+        fprintf(stderr, "模型出错，输出可能不完整\n");
+        result = 1;
+    }
     model_term();
-    mat_sink_close(sink);
-    mat_sink_close(raw_sink);
+    if (mat_sink_close(sink) < 0) result = 1;
+    if (mat_sink_close(raw_sink) < 0) result = 1;
     audio_close(cap);
-    return 0;
+    return result;
 }

@@ -23,7 +23,7 @@ mat_sink_t *mat_sink_open(const char *path, const char *varname, int nrows);
 /* 追加一列（nrows 个 double，列优先）。返回 0 成功，<0 失败。 */
 int mat_sink_write_col(mat_sink_t *s, const double *col);
 
-/* 回填列数并关闭。允许传入 NULL。 */
-void mat_sink_close(mat_sink_t *s);
+/* 回填列数并关闭。返回 0 成功，<0 写入/刷新/关闭失败。允许传入 NULL。 */
+int mat_sink_close(mat_sink_t *s);
 
 #endif /* MAT_SINK_H_ */

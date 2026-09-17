@@ -39,6 +39,7 @@ end
 
 %% 硬判决，统计BER %%
 output=x(loc1+15:loc2-1);
+info_decode=zeros(1,L);             % 每次运行独立，不能保留上次大图的数组尾部
 ber1=0;
 loc_error1=[];
 for i=1:length(output)
@@ -52,7 +53,7 @@ for i=1:length(output)
         loc_error1= [loc_error1,i];
     end
 end
-BER=ber1/length(info_decode)
+BER=ber1/L
 
 %% 恢复图片（按真实宽高还原）%%
 bmp_figure=zeros(NN,MM);

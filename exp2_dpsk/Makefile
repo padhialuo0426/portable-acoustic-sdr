@@ -57,17 +57,30 @@ endif
 
 VPATH := src $(COMMON)/src $(MODEL_DIR) $(SHAREDUTILS)
 OBJS  := $(addprefix $(BUILD)/,$(notdir $(SRCS:.c=.o)))
+CONFIG := $(BUILD)/.config
 
-.PHONY: all clean
+# 配置改变时更新签名；配置未变则保留时间戳，普通 make 无需重编。
+# SRCS 也参与签名，避免切回旧后端或删除生成源码后漏掉重新链接。
+
+.PHONY: all clean FORCE
 all: $(TARGET)
 	@echo "==> 生成: $(TARGET)   [MODEL=$(MODEL) AUDIO=$(AUDIO)]"
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) $^ -o $@ $(LDLIBS)
+$(TARGET): $(OBJS) $(CONFIG)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o $@ $(LDLIBS)
 
-$(BUILD)/%.o: %.c
+FORCE:
+
+$(CONFIG): FORCE
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -c $< -o $@
+	@printf '%s\n' '$(MODEL)' '$(AUDIO)' '$(MODEL_DIR)' '$(CC)' '$(CPPFLAGS)' '$(CFLAGS)' '$(LDFLAGS)' '$(LDLIBS)' '$(SRCS)' > $@.tmp
+	@cmp -s $@.tmp $@ && rm -f $@.tmp || mv -f $@.tmp $@
+
+$(BUILD)/%.o: %.c $(CONFIG)
+	@mkdir -p $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
 
 clean:
 	rm -rf $(BUILD)
+
+-include $(OBJS:.o=.d)

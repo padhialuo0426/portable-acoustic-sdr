@@ -36,7 +36,8 @@ audio_dev_t *audio_playback_open(const char *device, unsigned sample_rate,
 /*
  * 读取一帧。buf 长度须 >= frames*channels（交织 L R L R ... 排布）。
  * 阻塞直到读满；遇到 xrun(overrun) 会自动恢复。
- * 返回实际读取帧数(>0)，<=0 表示出错。
+ * 返回实际读取帧数(>0)，0 表示文件输入的正常 EOF，<0 表示出错/被信号打断。
+ * ALSA 后端凑满整帧；文件后端在 EOF 可返回半帧，并把剩余缓冲补零。
  */
 int audio_capture_read(audio_dev_t *d, int16_t *buf, unsigned frames);
 

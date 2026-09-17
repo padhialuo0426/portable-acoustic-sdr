@@ -91,6 +91,10 @@ int main(int argc, char **argv)
     if (do_playback) {
         play = audio_playback_open("default", MODEL_SAMPLE_RATE_HZ,
                                    1 /*单声道*/, MODEL_FRAME_SAMPLES);
+        if (!play) {
+            audio_close(cap);
+            return 1;
+        }
     }
 
     /* 两路输出落盘为 .mat（与原 To File 兼容：变量名 toFileData，81×N）*/
@@ -105,6 +109,16 @@ int main(int argc, char **argv)
     mat_sink_t *raw_sink = raw_path ? mat_sink_open(raw_path, "rawAudio",
                                                     MODEL_OUT_LEN) : NULL;
 
+    int result = raw_path && !raw_sink;
+    for (int j = 0; j < MODEL_NUM_OUTPUTS; ++j)
+        if (!sink[j]) result = 1;
+    if (result) {
+        for (int j = 0; j < MODEL_NUM_OUTPUTS; ++j) mat_sink_close(sink[j]);
+        mat_sink_close(raw_sink);
+        audio_close(play);
+        audio_close(cap);
+        return 1;
+    }
     model_init();
     if (max_ticks)
         fprintf(stderr, "运行中：采集=%s  %dHz  %d声道  采集 %.1f 秒后自动停止\n",
@@ -124,8 +138,16 @@ int main(int argc, char **argv)
 
     while (!g_stop && !model_stop_requested()) {
         if (max_ticks && tick >= max_ticks) break;    /* -t 到时停止 */
+        memset(inter, 0, sizeof inter); /* 防止后端半帧返回时混入旧采样 */
         int n = audio_capture_read(cap, inter, MODEL_FRAME_SAMPLES);
-        if (n <= 0) break;
+        if (n < 0) {
+            if (!g_stop) {
+                fprintf(stderr, "采集失败，输出可能不完整\n");
+                result = 1;
+            }
+            break;
+        }
+        if (n == 0 || g_stop) break;
 
         /* 去交织 -> [L0..L79, R0..R79]（模型期望布局）。
            单声道(cap_ch=1)左右都填该单声道；立体声(cap_ch=2)取左/右两路 */
@@ -139,7 +161,10 @@ int main(int argc, char **argv)
         if (raw_sink) {
             for (int i = 0; i < MODEL_FRAME_SAMPLES; ++i)
                 raw_col[i] = (double)(in[i] + in[i + MODEL_FRAME_SAMPLES]);
-            mat_sink_write_col(raw_sink, raw_col);
+            if (mat_sink_write_col(raw_sink, raw_col) < 0) {
+                result = 1;
+                break;
+            }
         }
 
         model_step();
@@ -147,11 +172,13 @@ int main(int argc, char **argv)
         double t = (double)tick / MODEL_STEP_RATE_HZ;   /* 时间戳 */
         for (int j = 0; j < MODEL_NUM_OUTPUTS; ++j) {
             const double *out = model_output(j);
-            if (!sink[j] || !out) continue;
+            if (!out) { result = 1; break; }
             col[0] = t;
             memcpy(&col[1], out, MODEL_OUT_LEN * sizeof(double));
-            mat_sink_write_col(sink[j], col);
+            if (mat_sink_write_col(sink[j], col) < 0) { result = 1; break; }
         }
+
+        if (result) break;
 
         /* 可选：把第 0 路输出回放出来 */
         if (play) {
@@ -163,7 +190,10 @@ int main(int argc, char **argv)
                     if (v < -32768.0) v = -32768.0;
                     play_buf[i] = (int16_t)v;
                 }
-                audio_playback_write(play, play_buf, MODEL_FRAME_SAMPLES);
+                if (audio_playback_write(play, play_buf, MODEL_FRAME_SAMPLES) < 0) {
+                    result = !g_stop;
+                    break;
+                }
             }
         }
         tick++;
@@ -171,10 +201,15 @@ int main(int argc, char **argv)
 
     fprintf(stderr, "正在停止... 共 %lu 帧 (%.2f 秒)\n",
             tick, (double)tick / MODEL_STEP_RATE_HZ);
+    if (model_stop_requested()) {
+        fprintf(stderr, "模型出错，输出可能不完整\n");
+        result = 1;
+    }
     model_term();
-    for (int j = 0; j < MODEL_NUM_OUTPUTS; ++j) mat_sink_close(sink[j]);
-    mat_sink_close(raw_sink);
+    for (int j = 0; j < MODEL_NUM_OUTPUTS; ++j)
+        if (mat_sink_close(sink[j]) < 0) result = 1;
+    if (mat_sink_close(raw_sink) < 0) result = 1;
     audio_close(play);
     audio_close(cap);
-    return 0;
+    return result;
 }

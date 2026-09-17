@@ -113,6 +113,14 @@ make AUDIO=file            # 真实模型 + 文件输入   —— 无噪声链�
 make MOCK=1                # 桩模型 + 合成音频     —— 纯管线/调度联调
 ```
 
+同一工作目录中切换 `MODEL`、`AUDIO`、编译器或编译/链接选项会自动重新构建；
+头文件修改也会触发依赖它的目标文件重编。跨机器复制旧 `build/` 或保留旧时间戳覆盖
+源文件时仍应先 `make clean`。
+
+接收端仅在正常到时、文件 EOF 或用户停止且输出成功关闭时返回 0。采集失败、输入
+文件末尾不足一个 int16 样本、MAT 文件打开/写入/关闭失败均返回非零；此时输出可能
+不完整，不应继续作为成功采集解码。
+
 安装 ALSA 开发库：Debian/Ubuntu/树莓派/香橙派/Jetson `sudo apt install libasound2-dev`；
 Fedora `sudo dnf install alsa-lib-devel`。交叉编译：`make CC=aarch64-linux-gnu-gcc`。
 
@@ -126,6 +134,8 @@ Fedora `sudo dnf install alsa-lib-devel`。交叉编译：`make CC=aarch64-linux
 `<模型名>_ert_rtw/`，再 `make` 即可。Device Type 已设为 `ARM Cortex-A (64-bit)`。
 入库的 `.slx` 存的是 **R2022a 格式**，R2022a 及以上都能打开；在更高版本改完模型
 提交回来前要用 `Simulink.exportToVersion(..., 'R2022A')` 导出回去（见 [Q13](Q&A.md)）。
+三个模型已保存 `RootIOFormat=Part of model data structure`，以匹配 `model_glue.c`
+使用的根输入/输出结构体。改配置后应检查该值，避免生成不兼容的接口。
 **生成代码不需要宿主机装任何 C 编译器**（编译在板上做），MATLAB 提示找不到
 supported compiler 可以无视。详细步骤见各实验文档；踩坑见 [Q&A](Q&A.md)。
 
