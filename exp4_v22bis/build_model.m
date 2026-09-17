@@ -167,6 +167,10 @@ set_param(mdl,'GenCodeOnly','on');
 set_param(mdl,'MatFileLogging','off');
 set_param(mdl,'Toolchain','Automatically locate an installed toolchain');
 set_param(mdl,'RootIOFormat','Part of model data structure');   % 见 Q13b
+% 不生成示例主程序：ert_main.c 里有 main()，会和本工程手写的 src/main.c
+% 撞符号（/usr/bin/ld: multiple definition of `main'）。前三个实验的生成
+% 代码里也没有这个文件。
+set_param(mdl,'GenerateSampleERTMain','off');
 
 save_system(mdl);
 fprintf('已建出 %s.slx（%d 样本/帧 -> %d 个输出）\n', mdl, FRAME_LEN, OUT_LEN);
