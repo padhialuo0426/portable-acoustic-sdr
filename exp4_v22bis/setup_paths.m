@@ -13,6 +13,5 @@ function setup_paths()
     addpath(fullfile(here,'..','common','matlab')); % gui.m 用的 +asdr 共用层
     % private/ 由 MATLAB 自动解析，不加入路径；model/ 是建模源文件而非入口。
     fprintf(['实验四路径已加入。可用: v22_emit / v22_rev / v22_wav_decode / gui\n' ...
-             '模型: build_model / v22_receive\n' ...
-             '离线测试: addpath(fullfile(''%s'',''tests'')); v22_run_tests\n'],here);
+             '模型: build_model / v22_receive\n']);
 end

@@ -1,151 +1,50 @@
 # 工程文档 · 总览与导航
 
-本目录集中存放工程的全部说明文档（之前散落在各子目录的 README 已汇总到这里）。
+本工程用声音传输单频信号或二值图片：PC 负责生成信号与显示结果，Linux 开发板负责采集音频、运行接收算法并记录数据。四个实验共用音频、写盘和 GUI 基础代码。
 
-## 文档导航
+## 从哪里开始
 
-| 文档 | 内容 |
+1. 按[部署运行教程](手把手部署运行教程.md#准备环境)准备 PC、开发板和音频通路。
+2. 在 PC 生成模型 C，上传到板上编译。
+3. 先跑通[实验一](手把手部署运行教程.md#实验一)，看到约 1000 Hz 的频谱峰值。
+4. 再按教程切换图片实验，观察 BER、还原点阵和星座图。
+
+## 按任务查文档
+
+| 你要做什么 | 文档 |
 |---|---|
-| 本文（`README.md`） | 工程总览：架构、运行条件、共享底层、构建总览、重新生成模型 |
-| [`实验一_单频信号.md`](实验一_单频信号.md) | 实验一逐目录文件说明 + 用法 |
-| [`实验二_DPSK.md`](实验二_DPSK.md) | 实验二逐目录文件说明 + 差分编码/成形/多图自适应 + 用法 |
-| [`实验三_chirp扩频.md`](实验三_chirp扩频.md) | 实验三逐目录文件说明 + 多速率/多图自适应 + 用法 |
-| [`实验四_V22bis.md`](实验四_V22bis.md) | 实验四逐目录文件说明 + HDLC 组帧/符号恢复/两档调制 + 用法 |
-| [`手把手部署运行教程.md`](手把手部署运行教程.md) | **从零到实测的分步操作**：传代码上板 → 编译 → 声学实测 → 取回解码 |
-| [`Q&A.md`](Q&A.md) | **常见问题与坑点**（声卡设备、跨板差异、编译、MATLAB 代码生成） |
+| 第一次完成采集、发射、取回和分析 | [手把手部署运行教程](手把手部署运行教程.md) |
+| 生成 C、上传源码、重新编译或文件回放 | [构建与部署](构建与部署.md) |
+| 查默认参数、命令行、MAT 格式和目录用途 | [接口与参数参考](接口与参数参考.md) |
+| 处理编译、音频、帧同步或星座异常 | [常见问题 Q&A](Q&A.md) |
 
-> 项目根目录的 `README.md` 只做**简要介绍 + 许可声明**；细节都在本目录。
+| 实验原理 | 主要学习内容 |
+|---|---|
+| [实验一 · 单频信号](实验一_单频信号.md) | 采样、滤波和 FFT，检查完整收发通路 |
+| [实验二 · DPSK](实验二_DPSK.md) | 差分编码、脉冲成形、码元同步和帧同步 |
+| [实验三 · chirp 扩频](实验三_chirp扩频.md) | 上下扫频、相关检测和多速率接收模型 |
+| [实验四 · V.22bis](实验四_V22bis.md) | QPSK/16-QAM、匹配滤波、定时与载波恢复、HDLC/FCS |
 
----
-
-## 这是什么
-
-一套 Simulink 声学软件无线电教学工程，接收端在**任意 Linux**
-（x86 / 树莓派 / Jetson / 香橙派 / 其它 ARM 板）上用 `gcc` 直接编译运行。
-
-**运行条件**：任意 Linux + `libasound`(ALSA 用户态库) + `pthread` + `gcc`，
-**不需要 MathWorks 硬件支持包**。
-**与具体板子无关**——平台差异只剩一个命令行参数 `-d <声卡设备名>`。
-
-## 整体架构：非对称「PC 发射 + 板端接收」
-
-四个实验都是同一种结构——**`.slx` 模型只是接收端**，发射是 PC 端 MATLAB 脚本：
+## 工程如何分工
 
 ```mermaid
 flowchart LR
-    emit["PC：*_emit.m<br/>生成波形 / sound() 播放"]
-    spk["PC：音频输出"]
-    mic["板上：音频输入"]
-    rx["开发板：接收端 C 程序<br/>ALSA 采集 → 接收模型 → 写 .mat"]
-    dec["PC：解码/还原<br/>bok_rev.m / dpsk_rev.m / v22_rev.m / spectrum.m"]
-
-    emit --> spk -->|"空气或有线链路"| mic --> rx
-    rx -->|"用 scp/FileZilla 把 .mat 从 Linux 板子传回 PC"| dec
+    model["PC：Simulink 模型"] -->|"生成纯算法 C"| build["Linux 板：gcc 编译"]
+    tx["PC：MATLAB 发射"] --> channel["音频通路"]
+    channel --> runtime["板级运行时：ALSA 采集"]
+    build --> dsp["接收算法"]
+    runtime --> dsp --> mat["板级运行时：写 MAT"]
+    mat -->|"GUI 下载或 scp"| result["PC：分析 / 解码 / 显示"]
 ```
 
-- **发射端**（`*_emit.m`）：纯 PC MATLAB，用 `sound()` 经声卡播放。
-  实验二/三的 `py/` 下另有一套**在板上跑的** Python 脚本（`*_emit.py`/`*_rev.py`），
-  板子只要有 python3 就能脱离 MATLAB 把整个实验跑完。
-  四个实验各有一个可选的 `gui.m`，把「连接/枚举采集设备 + 同步源码上板并编译 +
-  电平校准 + 启动采集/放音/取回/解码」串成四次点击（手动流程仍是教学正路，
-  见 [Q&A](Q&A.md) Q9）。
-- **接收端**（板上 C）：Simulink 只负责生成**纯算法 C**，音频 I/O、
-  落盘、调度全部由手写的 POSIX/ALSA 代码（`common/`）承担。
-- **取文件**：接收端把 `.mat` 写到板上本地盘，用标准 **`scp`/FileZilla** 拉回 PC。
+模型负责算法，手写 C 负责音频设备、调度和文件。二者由各实验的 `src/model_glue.c` 连接；共享实现位于 `common/`。开发板不运行 MATLAB，也不需要 MathWorks 硬件支持包。
 
-## 顶层目录结构
+音频通路既可以是扬声器到麦克风，也可以是兼容电平的线路输出到线路输入。有线结果与空气传播结果应分别记录，不能用一种通路的结果替另一种通路验收。
 
-```
-.
-├── README.md            根说明（简介 + 许可）
-├── LICENSE              GNU GPLv3
-├── documents/           ← 本文档目录
-├── common/              跨实验共享：板级底层(音频 I/O + MAT 写入) + matlab/(GUI 共用层)
-├── exp1_single_freq/    实验一 · 单频信号测试
-├── exp2_dpsk/           实验二 · DPSK 差分相移键控
-├── exp3_chirp/          实验三 · 线性调频(chirp)扩频通信
-└── exp4_v22bis/         实验四 · V.22bis 风格 QPSK/16-QAM
+实验二、三还提供 Python 发射与解码脚本。已有生成 C 或已编译接收程序时，运行阶段可以不使用 MATLAB；从新克隆的仓库构建真实接收机，仍需先生成模型 C。环境要求见[软件与版本](接口与参数参考.md#软件与版本)。
 
-实验一至三的入口是扁平的，`.slx` 与各 `.m` 脚本都直接放在根下，子目录只有
-`src/`（手写 C）和 `py/`（板上脚本）这两类代码，外加存数据的 `sample_data/`
-与 `baseband_images/`（实验一只有 `src/`）：
+## 文件与记录的边界
 
-    exp2_dpsk/
-    ├── Makefile             板上构建入口
-    ├── dpsk_receive.slx         Simulink 模型（只在 PC 上打开，不上板）
-    ├── dpsk_receive_ert_rtw/    模型生成的 C（**不入库**，MATLAB 里生成）
-    ├── src/                 手写 C：main.c  model_glue.c  model_iface.h
-    ├── py/                  免 MATLAB 的板上发射/解码脚本
-    ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
-    ├── sample_data/         离线试解码用的样例
-    └── baseband_images/     基带图片，MATLAB 与板上 py 都读它（实验一无此项）
-```
+仓库保存模型、手写源码、实验图片和正式说明；生成 C、构建缓存和采集产物不入库。实验四的内部函数位于 `private/`，模型算法与布局位于 `model/`，日常入口留在实验根目录。
 
-实验四根目录仅保留收发、GUI、建模入口和部署依赖；内部算法在 `private/`，模型源码与布局在 `model/`，全部测试代码和产物在 `tests/`。详见[实验四目录说明](实验四_V22bis.md#目录与文件逐一说明)。
-
-## 共享底层 `common/`
-
-四个实验共用的板级运行时，全部手写 POSIX，零支持包依赖：
-
-| 文件 | 作用 |
-|---|---|
-| `include/audio_io.h`、`src/audio_io.c` | POSIX/ALSA 采集+播放（S16_LE，设备/速率/声道/帧长可配，`snd_pcm_recover` 处理 xrun） |
-| `src/audio_io_null.c` | 合成 1kHz 单音后端（无声卡机器联调，编译开关 `AUDIO=null`） |
-| `src/audio_io_file.c` | 原始 int16 文件输入后端（无噪声链路验证，`AUDIO=file`） |
-| `include/mat_sink.h`、`src/mat_sink.c` | MAT-v4 流式写入器，产出与 Simulink `To File` 同格式的 `.mat` |
-| `matlab/+asdr/` | 四个 `gui.m` 共用的界面骨架与板上连接层（`App` / `Board` / `ImageUI`），**跑在 PC 上，不上板** |
-
-平台差异收敛到一个参数 `-d`；唯一耦合 Simulink 符号名的代码集中在各实验
-`src/model_glue.c`（重新生成模型后只需核对一处字段名）。
-
-## 四个实验对照
-
-| 实验 | 模型 | 功能 | 帧率 | 接收端可执行 |
-|---|---|---|---|---|
-| [实验一](实验一_单频信号.md) | `single_fre_rev.slx` | 声学单频接收/滤波/记录 | 100Hz 单速率 | `sdr_rx` |
-| [实验二](实验二_DPSK.md) | `dpsk_receive.slx` | DPSK 接收：滤波/码元同步/抽样判决 | 100Hz 单速率 | `dpsk_rx` |
-| [实验三](实验三_chirp扩频.md) | `chirp_rev_detect.slx` | LFM 扩频接收检测（多速率 + 15 个 Stateflow） | 10Hz 多速率 | `chirp_rx` |
-| [实验四](实验四_V22bis.md) | `v22_receive.slx` | 下变频、RRC、定时、AGC/静噪、载波恢复，电脑端 HDLC 解码 | 10Hz 单速率；每帧 60 符号 | `v22_rx` |
-
-## 构建总览（两个独立开关 MODEL / AUDIO）
-
-每个实验目录下：
-
-```bash
-make                       # 真实模型 + ALSA      —— 板上部署（需 libasound2-dev）
-make AUDIO=null            # 真实模型 + 合成音频   —— 无声卡机器验证算法
-make AUDIO=file            # 真实模型 + 文件输入   —— 无噪声链路验证（喂 .raw）
-make MOCK=1                # 桩模型 + 合成音频     —— 纯管线/调度联调
-```
-
-同一工作目录中切换 `MODEL`、`AUDIO`、编译器或编译/链接选项会自动重新构建；
-头文件修改也会触发依赖它的目标文件重编。跨机器复制旧 `build/` 或保留旧时间戳覆盖
-源文件时仍应先 `make clean`。
-
-接收端仅在正常到时、文件 EOF 或用户停止且输出成功关闭时返回 0。采集失败、输入
-文件末尾不足一个 int16 样本、MAT 文件打开/写入/关闭失败均返回非零；此时输出可能
-不完整，不应继续作为成功采集解码。
-
-安装 ALSA 开发库：Debian/Ubuntu/树莓派/香橙派/Jetson `sudo apt install libasound2-dev`；
-Fedora `sudo dnf install alsa-lib-devel`。交叉编译：`make CC=aarch64-linux-gnu-gcc`。
-
-## 重新生成模型（改算法后，需 MATLAB）
-
-仓库里只有 `.slx` 模型，**生成的 C 代码不入库**——两个版本的代码生成器产出不同
-（内部临时变量名、浮点运算顺序都会变），存一份反而容易和你手里的 MATLAB 对不上。
-所以**宿主机必须装 MATLAB**，用之前先生成一次，产物落在 `<模型名>_ert_rtw/`。
-只有当你要改算法时才需要在 MATLAB 里重新生成：配置 `ert.tlc` + `HardwareBoard=None`
-+ `GenCodeOnly` + 关 MAT 日志 + `Toolchain` 设为自动定位，`slbuild` 直接覆盖
-`<模型名>_ert_rtw/`，再 `make` 即可。Device Type 已设为 `ARM Cortex-A (64-bit)`。
-实验一至三的 `.slx` 存的是 **R2022a 格式**，R2022a 及以上都能打开；在更高版本改完模型
-提交回来前要用 `Simulink.exportToVersion(..., 'R2022A')` 导出回去（见 [Q13](Q&A.md)）。
-实验四当前模型在 **R2025b** 上构建和验证，尚未验证 R2022a 导出兼容性。
-四个模型已保存 `RootIOFormat=Part of model data structure`，以匹配 `model_glue.c`
-使用的根输入/输出结构体。改配置后应检查该值，避免生成不兼容的接口。
-**生成代码不需要宿主机装任何 C 编译器**（编译在板上做），MATLAB 提示找不到
-supported compiler 可以无视。详细步骤见各实验文档；踩坑见 [Q&A](Q&A.md)。
-
-## 致谢与许可
-
-见根目录 `README.md`。本工程基于一套现成的树莓派 + Simulink 声学 SDR 教学工程改写
-（原工程未声明许可证）；新增/改写的代码以 **GNU GPLv3** 发布。
+详细目录见[目录与入口](接口与参数参考.md#目录与入口)。

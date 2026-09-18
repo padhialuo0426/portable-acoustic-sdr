@@ -1,226 +1,81 @@
 # 实验二 · DPSK 差分相移键控
 
-把一张 1-bit 图片当基带信息，先做**差分编码**，经**平方根升余弦成形**后调制到
-1kHz 载波，用扬声器发射；开发板麦克风采集，板上做带通/匹配滤波、码元同步、抽样判决，
-每个码元输出一个判决值；PC 端帧同步、判决、算 BER、还原图像。
+本实验把二值图片按列展开为比特，以相邻码元的相位变化携带信息，经过脉冲成形后调制到 1 kHz 载波。开发板输出逐码元的相关值，PC 或板上 Python 脚本完成帧同步、图片还原和 BER 计算。
 
-> 📖 **从零部署到实测的完整分步操作见 [手把手部署运行教程](手把手部署运行教程.md)**（传代码上板 → 编译 → 声学实测 → 取回解码算 BER）。
+操作步骤见[部署运行教程 · 实验二](手把手部署运行教程.md#实验二)；默认值和文件格式见[接口与参数参考](接口与参数参考.md)。
 
 ## 系统模型
 
 ```mermaid
 flowchart TB
-    subgraph TX["发射链路 · PC"]
-        direction LR
-        img["图像(基带)"] --> bits["比特流"] --> diff["差分编码<br/>(±1)"] --> shape["平方根升余弦成形<br/>β=0.5"] --> mod["×1kHz 载波"] --> spk["PC：扬声器(发射)"]
+    subgraph TX["发射端"]
+        img["二值图片"] --> frame["列优先展开 / 组帧"]
+        frame --> diff["差分编码"] --> rrc["平方根升余弦成形"]
+        rrc --> carrier["乘 1 kHz 载波"]
     end
-    subgraph RX["接收链路 · 板上 → PC"]
-        direction LR
-        mic["板上：麦克风(接收天线)"] --> det["带通/匹配滤波<br/>码元同步 → 抽样判决"] --> dec["解码/判决/BER"] --> out["还原图像"]
+    carrier --> channel["音频通路"]
+    subgraph RX["接收端"]
+        filter["带通 / 匹配滤波"] --> timing["码元同步 / 相关检测"]
+        timing --> values["每码元一个相关值"]
+        values --> sync["判决 / 帧同步"] --> image["还原图片 / BER"]
     end
-    spk -->|"空气(声波信道)"| mic
+    channel --> filter
 ```
 
-- **差分编码**：与前一个参考相位**相同**记 `+1`、**不同**记 `−1`。信息编在相位的
-  *变化* 里而不是绝对相位上，所以接收端不需要恢复绝对相位基准。
-- **成形**：平方根升余弦（β=0.5，每码元 80 点），收发各一半、级联构成升余弦，
-  在抽样时刻无码间串扰。
-- **板端只输出判决流**，帧同步/解码/BER/还原交给 `dpsk_rev`——
-  PC 上用 MATLAB 版 `dpsk_rev.m`，也可以直接在板上跑 Python 版 `dpsk_rev.py`。
+## 差分编码：观察相位变化
 
-## 数据流
+设图片组帧后的比特为 $b_k$，差分状态为 $d_k$，初始状态为零：
 
-```mermaid
-flowchart TD
-    emit["PC：dpsk_emit.m<br/>sound() 播放"]
-    spk["PC：扬声器"]
-    mic["板上：麦克风"]
-    rx["板上：build/dpsk_rx<br/>ALSA 采集 → 模型(滤波/同步/判决) → 每码元一个判决值 → dpsk5.mat"]
-    dec["PC：dpsk_rev.m<br/>帧同步 → 判决 → BER → 还原图像"]
+$$
+d_k=b_k\oplus d_{k-1},\qquad a_k=1-2d_k.
+$$
 
-    emit --> spk -->|"空气"| mic --> rx
-    rx -->|"用 scp 命令把 dpsk5.mat 从 Linux 板子传回 PC"| dec
-```
+发送符号 $a_k$ 取 `+1` 或 `−1`，对应载波相位相差 180°。例如输入 `0,1,1,0` 时，状态为 `0,1,0,0`，发送符号为 `+1,−1,+1,+1`。
 
-## 目录与文件逐一说明
+信息取决于相邻符号的关系。因此整段信号共同翻转 180° 不会改变差分关系，接收端不必知道发射端的绝对载波相位。噪声、错误抽样和随时间变化的相位仍会造成误码，差分编码本身不提供纠错。
 
-```
-exp2_dpsk/
-├── Makefile           构建入口（MODEL/AUDIO 开关）
-├── dpsk_receive.slx        Simulink 模型（只在 PC 上打开）
-├── dpsk_receive_ert_rtw/   模型生成的 C（**不入库**，Ctrl+B 生成）
-├── src/               手写 C：main.c  model_glue.c  model_iface.h
-├── py/                dpsk_emit.py  dpsk_rev.py（免 MATLAB，在板上跑）
-├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
-├── sample_data/       真实声学采集 + 对应发送真值，可离线试解码
-└── baseband_images/   基带图片（待传信息），MATLAB 与板上 py 都读它
-```
+## 成形：限制带宽并控制码间串扰
 
-### `src/` — 板上运行时（手写 C）
+码元率为 100 Baud，每码元携带 1 bit，采样率为 8000 Hz，每码元有 80 点。发射端先插零上采样，再使用滚降系数 $\beta=0.5$ 的平方根升余弦脉冲成形：
 
-| 文件 | 作用 |
-|---|---|
-| `dpsk_receive.slx` | 接收模型：带通滤波 → 匹配滤波 → 码元同步 → 抽样判决。**它只在 PC 上用 Simulink 打开、生成下面那份 C**，不会被同步到板上。 |
-| `main.c` | 主循环：ALSA 采集 80 样本/帧(100Hz) → 喂模型 → `model_step_frame()` → 取标量判决 → 写 `dpsk5.mat`。命令行 `-d/-t/-c/-r`。 |
-| `model_glue.c` | 耦合 Simulink 符号名的薄层：`dpsk_receive_U.AudioIn` 输入、`dpsk_receive_Y.out_data` 判决。 |
-| `model_iface.h` | 契约：`MODEL_FRAME_SAMPLES=80`、`MODEL_FRAME_RATE_HZ=100` 等，`model_step_frame()` 声明。 |
+$$
+x[n]=\left(\sum_k a_kh[n-80k]\right)
+      \sin\left(2\pi\frac{1000}{8000}n\right).
+$$
 
-### `dpsk_receive_ert_rtw/` — Simulink 生成的 C
+理想的收发平方根升余弦级联得到升余弦响应，在正确抽样时刻满足零码间串扰条件。工程使用有限长度滤波器，实际结果还受定时误差、信道和滤波截断影响，不能把理想条件当成实采保证。
 
-> 这个目录**不在仓库里**，第一次用要先在 MATLAB 里生成（见下面「重新生成模型」）。
+## 组帧：从连续判决流里找到图片
 
-| 文件 | 作用 |
-|---|---|
-| `dpsk_receive_ert_rtw/*.c/.h` | 生成的纯算法 C（零支持包/零 rt_logging）。 |
+图片以列优先顺序展开，$L=宽\times 高$。帧内各段如下，长度单位均为比特，也就是本实验的码元数：
 
-**模型接口**（`src/model_glue.c` 按这几个名字取值，改了要同步改那里）：
+| 段 | 长度 | 内容与作用 |
+|---|---:|---|
+| 起始段 | 18 | 全 0 比特，用于接收捕获 |
+| 交替段 | 8 | `01010101` |
+| 帧头 | 15 | m 序列 `100110101111000` |
+| 载荷 | L | 图片像素 |
+| 帧尾 | 15 | 与帧头相同的 m 序列 |
+| 尾部保护 | 80 | 全 0 比特，让数据通过接收流水线 |
 
-- 输入：**Inport `AudioIn`**，`int16[160]` = 80 样本 × 2 声道，布局 `[L0..79, R0..79]`。
-- 输出：**Outport `out_data`**，标量——每个码元的判决值。注意它是**相关幅度**
-  （量级可达 1e6），不是 ±1，所以解码端的门限按整段峰值自适应而不是写死常数。
+这里的全 0 是**待调制的比特**，仍会产生载波，不能把它当成静音。总长度为 $L+136$ 个码元，另有成形滤波拖尾；默认 512 bit 图片的波形约 6.5 秒。
 
-**代码生成配置**：`ert.tlc` + `HardwareBoard=None` + `GenCodeOnly` + `MatFileLogging=off`
-（见 [Q12](Q&A.md)）+ `Device Type=ARM Cortex-A (64-bit)`
-+ `Toolchain=Automatically locate an installed toolchain`（见 [Q10](Q&A.md)）。
+接收模型含 3200 点、约 40 码元的延迟状态，尾部保护必须给帧尾留下通过流水线的时间。采集窗口还需包含启动和播放等待，不能只取 $L/100$ 秒。
 
-`Sum left & right channels and to single/Matrix Sum` 勾选 **Saturate on integer overflow**：
-该块输出 `int16`，单声道采集时左右同源 ⇒ 求和为 `2x`，不饱和会回绕翻转（见 [Q5](Q&A.md)）。
+## 判决与图片还原
 
-**单速率（与实验三的关键不同）**：本模型只有一个 `dpsk_receive_step()`，一帧就是
-一次 step；而一帧 80 样本正好等于发射端的一个码元（`fs/码元率 = 8000/100 = 80`），
-所以 ALSA 阻塞读天然给出 10ms = 100Hz 的实时节拍，运行时不需要实验三那种
-`step0/step1` 多速率封装。
+模型每处理 80 点输出一个相关值，保存到 `dpsk5.mat`。这个值保留幅度信息，可能达到较大量级，**不是已经归一化的 ±1**。解码脚本按整段数据的峰值设门限，再寻找相距 $L+15$ 的两段 m 序列。
 
-### `baseband_images/` — 基带图片
+本实验的空中帧不携带宽高。MATLAB 解码端从选定 BMP 得到尺寸，从 `info_all.mat` 取得发送真值；Python 解码端从指定 BMP 读取尺寸和真值。换图后，发射与解码必须选择对应图片，板上逐码元处理的模型无需因图片长度变化而修改。
 
-| 文件 | 尺寸(宽×高) | 比特 | 说明 |
-|---|---|---|---|
-| `ren512b.bmp` | 32×16 | 512 | 默认演示图 |
-| `da512b.bmp` | 32×16 | 512 | — |
-| `lan512b.bmp` | 32×16 | 512 | — |
-| `ru512b.bmp` | 32×16 | 512 | — |
-| `yi512b.bmp` | 32×16 | 512 | — |
-| `lzu2048b.bmp` | 64×32 | 2048 | 最长 |
+$$
+\mathrm{BER}=\frac{\text{恢复像素与发送真值不同的数量}}{L}.
+$$
 
-**帧结构（按图片自适应，`L`=图片比特数）**：
+这里没有 FCS 验证和自动重传。找到帧头、帧尾不意味着图片一定无误，仍要检查 BER 和点阵。仓库的 `sample_data/` 保存了一组接收数据和对应真值，可用于练习解码；它不是每次实采都能达到的性能承诺。
 
-```
-[0:18]        全 0            静默/信号检测
-[18:26]       01010101        交替前导
-[26:41]       m序列(15位)      帧头同步  [1 0 0 1 1 0 1 0 1 1 1 1 0 0 0]
-[41:41+L]     图像 L 位        基带载荷
-[41+L:56+L]   m序列(15位)      帧尾同步
-[56+L:...]    GUARD(80) 个 0   盖过接收模型的流水延迟
-```
+## 模型与运行时的关系
 
-两段 m 序列起点间距 = `L+15`，解码端据此自适应定位、并按真实宽高还原点阵。
+模型是单速率：一次 `dpsk_receive_step()` 消耗一帧 80 点音频并输出一个值。默认单声道经运行时复制为两路，由模型相加；求和有整数饱和保护，幅度过大仍会削顶。
 
-> **GUARD 为什么要 80 个码元**：模型的「匹配滤波后延迟」有 3200 点状态
-> （= 40 个码元）的流水延迟。保护码元若少于这个数，**帧尾 m 序列还没从管线里
-> 流出来信号就结束了**，解码端会报「未找到相距 L+15 的帧头/帧尾」。
-
-### PC 端 MATLAB 脚本
-
-| 文件 | 作用 | 关键数据 |
-|---|---|---|
-| `dpsk_emit.m` | 发射：读图（顶部 `img_name` 可切换，默认 `ren512b.bmp`）→ 差分编码 → 成形 → 调制 → `sound()` 播放 | 写 `info_all.mat` |
-| `dpsk_rev.m` | 解码：读 `dpsk5.mat` 帧同步/判决/BER/`imshow` 还原 | 读 `dpsk5.mat` + `info_all.mat`；`img_name` 须与发送一致 |
-| `gui.m` | **一键声学实测图形界面**（可选）：自检（连接 + 枚举采集设备）→ 同步源码到板上并编译 → 电平校准 → 板上启动采集/本机放音/取回/解码一次点完。见[手把手教程 §6](手把手部署运行教程.md#6-用图形界面-guim-一键跑三个实验通用)。 |
-| `setup_paths.m` | 把脚本/图片/模型目录加入 MATLAB 路径 | — |
-| `sample_data/` | 一组样例：`dpsk5.mat`（一次**真实声学采集**，发的是 `ren512b.bmp`）+ `info_all.mat`（对应的发送真值，由该 BMP 展开而来），无需板子即可离线试解码 | BER≈0.008（4/512），**非 0 属正常**——这是带信道噪声的真实录音 |
-
-### `py/` — 板上 Python 实现（与上面 `.m` 同名配对）
-
-**这几个脚本是在开发板上跑的**（板子只要有 python3，不需要 MATLAB）：
-它们读写的是板上的工作目录、打印的是板上的 `./build/…` 命令。
-没有 MATLAB 的时候，用它们可以在板子上独立把整个实验跑完。
-
-| 文件 | 作用 |
-|---|---|
-| `dpsk_emit.py` | 与 `dpsk_emit.m` 等价：读任意 1-bit BMP（自动宽高、自适应组帧）→ 输出 `dpsk_tx.raw/.wav/tx_truth.txt`，并打印声学采集建议 `-t` 秒数。 |
-| `dpsk_rev.py` | 与 `dpsk_rev.m` 等价：从同一 BMP 读尺寸 → 帧同步 → 判决 → BER → ASCII 还原图。 |
-
-## 任意图片支持
-
-发射/解码均**按图片尺寸自适应**：帧间距 = 图片比特数+15，按真实宽高还原点阵。
-**接收端 C 与 Simulink 模型无需任何改动**——模型逐码元出判决，与帧长无关。
-换图后**文件直喂**（无信道噪声）应得 **BER=0、像素级还原**；
-声学实测受环境噪声影响，BER 可能非 0。
-
-## 构建与运行
-
-```bash
-cd exp2_dpsk
-make                                      # 真实模型 + ALSA（需 libasound2-dev）
-make AUDIO=file                           # 真实模型 + 文件输入（无噪声测 DSP）
-
-arecord -l                                # 先看麦克风是 card 几
-./build/dpsk_rx -d plughw:2,0 -t 13       # card 号按实际改；采集 13 秒
-```
-
-产出 `dpsk5.mat`（变量 `toFileData5`，2×N：第1行时间，第2行判决值），喂 `dpsk_rev.m`。
-
-### 在板上独立复现（不需要 MATLAB）
-
-以下命令**全部在开发板上执行**，`cd` 到板上的 `exp2_dpsk/` 目录：
-
-```bash
-IMG=baseband_images/ren512b.bmp           # 换任意图片；缺省即此张
-
-python3 py/dpsk_emit.py $IMG            # 生成发射信号 + 打印建议 -t
-
-# A) 文件直喂（无声学噪声，纯测 DSP/解码）
-make AUDIO=file && ./build/dpsk_rx -d dpsk_tx.raw
-
-# B) 真实声学（扬声器播放 + 麦克风采集；-t 用建议值）
-make && (aplay -q dpsk_tx.wav &) ; ./build/dpsk_rx -d plughw:2,0 -t 13
-
-python3 py/dpsk_rev.py $IMG             # 帧同步 + BER + 还原图像
-```
-
-### 在 PC 上用 MATLAB 跑（效果等价）
-
-把 `dpsk_emit.m` 与 `dpsk_rev.m` 顶部 `img_name` 改成同一张图；`dpsk_emit` 发射、
-板上 `dpsk_rx` 采集、`scp` 取回 `dpsk5.mat` 到实验目录、`dpsk_rev` 解码。
-
-离线试解码（没有板子也能跑）：把 `sample_data/` 下的 `dpsk5.mat` 和 `info_all.mat`
-一起拷到实验目录，`img_name` 保持默认的 `ren512b.bmp`，直接跑 `dpsk_rev` 即可
-（两个文件缺一不可——`dpsk_rev` 要靠 `info_all.mat` 算 BER）。
-
-## 重新生成模型（改算法后）
-
-两种等价方式，产物都落到 `dpsk_receive_ert_rtw/`，任选其一。
-
-### 方式 A：脚本（`slbuild`，可批处理）
-
-```matlab
-R = '<仓库根目录>';
-% ★ 代码生成到哪，由 MATLAB 的**当前文件夹**决定（Simulink 的「代码生成
-%   文件夹」默认就是当前文件夹）。先 cd 到实验目录，产物自然落在这里。
-cd(fullfile(R,'exp2_dpsk'));   % 模型、生成目录、脚本都在这儿
-load_system('dpsk_receive')
-% …如需改算法在此修改…
-set_param('dpsk_receive','SystemTargetFile','ert.tlc');
-set_param('dpsk_receive','HardwareBoard','None');
-set_param('dpsk_receive','GenCodeOnly','on');
-set_param('dpsk_receive','MatFileLogging','off');
-set_param('dpsk_receive','Toolchain','Automatically locate an installed toolchain');
-% 根 I/O 必须是结构体形式，胶水层就是按 dpsk_receive_U / dpsk_receive_Y 取值的。
-% 不显式设的话，R2022a 会按「Individual arguments」生成，产出的代码里
-% 根本没有 ExtU/ExtY，板级 model_glue.c 编不过（实测踩到）。
-set_param('dpsk_receive','RootIOFormat','Part of model data structure');
-slbuild('dpsk_receive');     % 生成到 dpsk_receive_ert_rtw/
-% 若打印「1 models already up to date」说明模型没改过、代码被跳过；
-% 想无条件重来加 'ForceTopModelBuild',true
-```
-
-### 方式 B：Simulink 界面（GUI，更直观）
-
-> ⚠️ **动手前先把 MATLAB 的当前文件夹切到 `exp2_dpsk/`**（左侧地址栏，或命令行 `cd`）。
-> 代码生成到哪，由**当前文件夹**决定——Simulink 的「代码生成文件夹」默认就是它。
-> 不切的话代码会落到你当时所在的目录，`make` 编的还是实验目录里的旧代码。
-
-打开 `dpsk_receive.slx` → **APPS → Embedded Coder** → `Ctrl+E` 按上面的参数对齐
-（与[实验三文档](实验三_chirp扩频.md)的配置表一致）→ `Ctrl+B` 生成。
-
-生成后若 Inport/Outport 名字变了，同步改 `src/model_glue.c` 一处即可。
+MATLAB 和 Python 发射、解码入口见[目录与入口](接口与参数参考.md#目录与入口)。已有生成 C 后，可以按[文件回放流程](构建与部署.md#文件回放)绕过声卡检查数字链路，再与实采结果比较。

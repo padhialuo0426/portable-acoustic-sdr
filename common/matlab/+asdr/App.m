@@ -107,7 +107,7 @@ classdef App < handle
             if isDead
                 app.logStep('数据检查', '✗', '板上采到的全是 0，麦克风没收到信号');
                 app.logf('  常见原因：选中输出设备的音量过低（系统音量只作用于默认输出）、');
-                app.logf('  输出设备选错、麦克风没接好。先用「③ 电平校准」看 RMS（见 Q&A Q7/Q4）');
+                app.logf('  输出设备选错、麦克风没接好。先用「③ 电平校准」看 RMS（见 Q&A「电平与路由」）');
             end
         end
     end
@@ -356,7 +356,7 @@ classdef App < handle
                 [st, out] = app.board.get(sprintf('%s/%s', app.rdir.Value, app.spec.outMat), localMat);
                 if st ~= 0
                     app.logStep('取回数据', '✗', '%s', asdr.firstLine(out));
-                    app.logf('  板上可能没产出 %s（采集设备打不开？见 Q&A Q1/Q2）', app.spec.outMat);
+                    app.logf('  板上可能没产出 %s（采集设备打不开？见 Q&A「采集设备」）', app.spec.outMat);
                     return
                 end
                 app.logStep('取回数据', '✓', '%s', app.spec.outMat);
@@ -555,7 +555,7 @@ classdef App < handle
             [nm, ds] = asdr.App.parseArecord(out);
             if isempty(ds)
                 app.dev.Items = {'(板上没有采集设备)'};  app.dev.Enable = 'off';  app.devStrs = {};
-                app.logStep('枚举采集设备', '✗', '板上一个都没有，麦克风没插好？（见 Q&A Q4）');
+                app.logStep('枚举采集设备', '✗', '板上一个都没有，麦克风没插好？（见 Q&A「采集设备」）');
                 return
             end
             keep = app.alsaDev();                   % 尽量保住用户已选的那个

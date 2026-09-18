@@ -8,10 +8,7 @@ Thumbs.db
 # 构建产物
 build/
 
-# 运行/测试产物
-tests/
-
-# 运行/测试产物
+# 运行产物
 *.mat
 *.wav
 *.raw
@@ -23,6 +20,5 @@ tx_truth.txt
 **/slprj/
 **/*.slxc
 **/*.slx.r*
-# Simulink 生成的代码整目录不入库：改完模型自己重新生成（见各实验文档
-# 「重新生成模型」一节）。本实验宿主机必须装 MATLAB，不存在没有它的场景。
+# Simulink 生成的代码整目录不入库：生成与部署流程见 documents/构建与部署.md。
 **/*_ert_rtw/
