@@ -1,8 +1,14 @@
-function [x,sym]=v22_modulate(bits,P)
-%V22_MODULATE  直接仿真发送模型，HDLC 比特经过同步扩展、扰码、映射和成形。
+function [x,sym]=v22_modulate(bits,P,backend)
+%V22_MODULATE  V.22bis 音频；backend 默认 matlab，可选 simulink。
 if nargin<2,P=v22_params();end
 validateattributes(bits,{'numeric','logical'},{'vector','nonempty','real','finite'});
 assert(all(bits==0 | bits==1),'帧必须是二值比特。');
+if nargin<3,backend='matlab';end
+backend=validatestring(backend,{'matlab','simulink'});
+if strcmp(backend,'matlab')
+ [x,sym]=v22_mod_matlab(bits,P);
+ return
+end
 assert(P.fs==9600 && P.sps==16 && P.Rs==600,'采样率或符号率变化后需同步修改发送模型。');
 here=fileparts(mfilename('fullpath'));addpath(fullfile(here,'..','common','matlab'));
 sync=[];guard=0;if isfield(P,'syncBits'),sync=P.syncBits;guard=P.syncGuard;end

@@ -26,7 +26,7 @@ flowchart TB
 
 `dpsk_transmit.slx` 由五个分立模块组成：**前导与图片组帧 → 差分编码 → 每符号插零扩展 → 平方根升余弦成形 → 载波调制**。输入是图片按列展开的 0/1 比特；前导、首尾 m 序列和保护码元由模型生成。
 
-`dpsk_emit` 与 GUI 共用 `dpsk_modulate`，通过 `Simulink.SimulationInput` 设置图片数据并调用 `sim`。模型每步处理一个符号，输出 80 点；发完后继续冲洗滤波器，MATLAB 保留完整拖尾，再按整段峰值归一化并播放。帧结构、成形系数和载波与下面的原理一致，发送过程不需要 C 代码。
+`dpsk_emit` 与 GUI 共用 `dpsk_modulate`，默认运行 `private/dpsk_modulate_matlab.m` 中的 MATLAB 算法。选择 Simulink 发送时，通过 `Simulink.SimulationInput` 设置图片数据并调用 `sim`。模型每步处理一个符号，输出 80 点；发完后继续冲洗滤波器，MATLAB 保留完整拖尾，再按整段峰值归一化并播放。帧结构、成形系数和载波与下面的原理一致，发送过程不需要 C 代码。
 
 ## 差分编码：观察相位变化
 

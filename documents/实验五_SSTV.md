@@ -112,9 +112,9 @@ SSTV 的水平方向是连续模拟扫描，一些外部软件将 M2 或 S2 显�
 
 上排从左到右处理协议与像素地址，下排从左到右处理颜色与调制；跨排信号通过同名标签接续，减少长连线交叉。
 
-GUI 和 `sstv_emit` 都通过 `Simulink.SimulationInput` 提供图片与模式，再调用 `sim` 收集音频，每次输出 4800 点。最后一帧按有效长度去掉补零。图片读取、二值化、缩放和声卡播放由 MATLAB 完成；VIS、扫描和调制在模型内完成。
+GUI 和 `sstv_emit` 默认使用 `private/sstv_modulate_matlab.m`，直接在 MATLAB 中生成 VIS、扫描音调与连续相位波形。选中“Simulink 模型”或指定 `backend='simulink'` 时，通过 `Simulink.SimulationInput` 提供图片与模式，再调用 `sim` 收集音频，每次输出 4800 点。最后一帧按有效长度去掉补零。图片读取、二值化、缩放和声卡播放由 MATLAB 完成；VIS、扫描和调制在模型内完成。
 
-发送端需要 MATLAB 和 Simulink，**无需生成或编译发送 C 代码**。仿真先产生完整波形，再启动采集与播放，因此仿真耗时不会占用 GUI 的采集窗口。Linux 接收端仍使用接收模型生成的 C 代码。
+模型发送需要 MATLAB 和 Simulink，纯 MATLAB 发送使用脚本算法；两种方式都**无需生成或编译发送 C 代码**。仿真先产生完整波形，再启动采集与播放，因此仿真耗时不会占用 GUI 的采集窗口。Linux 接收端仍使用接收模型生成的 C 代码。
 
 ![实验五 Simulink 发送模型](assets/exp5/transmitter_overview.png)
 

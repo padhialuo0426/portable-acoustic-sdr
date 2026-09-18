@@ -26,7 +26,8 @@ imdata = imread(fullfile(imgdir, img_name));
 figure; imshow(imdata); title(['电脑发送图片: ' img_name])
 
 %% 调制 %%
-x = v22_mod(frameBits, P);
+TX_BACKEND = 'matlab';       % 'matlab' 或 'simulink'
+x = v22_mod(frameBits, P, TX_BACKEND);
 y = [zeros(1, round(LEAD*P.fs)), x, zeros(1, round(0.3*P.fs))];
 
 %% 产生声音 %%

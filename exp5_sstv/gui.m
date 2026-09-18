@@ -64,7 +64,7 @@ end
 function meta=prepare(app)
     resetResults(app);P=sstv_params(app.ui.mode.Value);binary=app.ui.binary.Value;
     reference=sstv_prepare_image(app.ui.imageFile.Value,binary,P);
-    [audio,tx]=sstv_modulate(reference,P);
+    [audio,tx]=sstv_modulate(reference,P,app.ui.txBackend.Value);
     meta=struct('x',audio,'dur',tx.duration,'desc',sprintf('%s · %d×%d',P.mode,P.width,P.height), ...
         'reference',reference,'binary',binary,'P',P);
     showImage(app.ui.axTx,reference,'本次发送图片');

@@ -8,7 +8,7 @@ function gui()
 %     → 取回 single_f.mat → FFT 找谱峰 → 与设定载波比对
 %
 %   界面骨架、板上连接、同步编译、电平校准都在 common/matlab/+asdr 里，
-%   三个实验共用；本文件只提供单频特有的发波与频谱分析。
+%   五个实验共用；本文件只提供单频特有的发波与频谱分析。
 %
 %   注意：本界面是便利封装。教学正路仍是 single_fre_emit / spectrum 两个脚本
 %   手动跑（见 documents/手把手部署运行教程.md）。
@@ -53,7 +53,7 @@ function buildResults(app, panel)
 end
 
 function y = makeTone(app, P, sec)
-    y = single_fre_modulate(app.ui.fc.Value,round(sec*P.fs));
+    y = single_fre_modulate(app.ui.fc.Value,round(sec*P.fs),1,app.ui.txBackend.Value);
 end
 
 function meta = prepare(app, P)

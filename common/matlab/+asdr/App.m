@@ -1,5 +1,5 @@
 classdef App < handle
-%APP  三个实验共用的「一键声学实测」界面骨架与四条流程。
+%APP  五个实验共用的「一键声学实测」界面骨架与四条流程。
 %
 %   每个实验的 gui.m 只提供一份 spec（见下），界面骨架、板上连接、
 %   同步编译、电平校准、启动采集/放音/取回，全部由本类负责。
@@ -148,6 +148,13 @@ classdef App < handle
             % 实验特有的参数行（发送图片 / 载波 / 发射时长…）
             s.buildParams(app, gL, lab);
 
+            lab('发送机');
+            app.ui.txBackend = uidropdown(gL, ...
+                'Items',{'MATLAB 脚本','Simulink 模型'}, ...
+                'ItemsData',{'matlab','simulink'},'Value','matlab', ...
+                'Tooltip','两种实现共用图片、播放幅度、输出设备和接收流程。');
+            app.track(app.ui.txBackend);
+
             lab('前导余量 (s)'); app.lead = uieditfield(gL,'numeric','Value',1,'Limits',[0 30], ...
                                      'ValueChangedFcn',@(~,~)app.refreshTiming());
             lab('尾部余量 (s)'); app.tail = uieditfield(gL,'numeric','Value',2,'Limits',[0 60], ...
@@ -186,7 +193,15 @@ classdef App < handle
             app.logBox = uitextarea(gLog,'Editable','off','Value',{''},'FontName','Menlo');
 
             app.fig.CloseRequestFcn = @(~,~) app.closeAll();
+            % 加入发送机选择后，保证操作按钮在默认窗口内完整显示。
+            app.fig.Position(4) = max(app.fig.Position(4), ...
+                nLabRows*30 + nBtn*36 + 75);
+            [connection, note] = asdr.readConnection();
+            app.host.Value = connection.ip;
+            app.user.Value = connection.username;
+            app.pass.Value = connection.password;
             app.refreshTiming();
+            if ~isempty(note), app.logf('%s',note); end
             app.logf('就绪。顺序：① 自检 → ② 同步并编译 → ③ 电平校准 → ④ 一键实测');
         end
 
@@ -328,6 +343,8 @@ classdef App < handle
                 tcap = ceil(app.lead.Value + meta.dur + app.tail.Value);
 
                 app.logf('--- ④ 一键实测 ---');
+                app.logf('发送机：%s',app.ui.txBackend.Items{ ...
+                    strcmp(app.ui.txBackend.ItemsData,app.ui.txBackend.Value)});
                 if ~app.ensureConn() || ~app.ready(), return, end
                 app.logf('%s  信号 %.1fs  采集窗口 %ds', meta.desc, meta.dur, tcap);
 

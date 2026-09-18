@@ -122,7 +122,7 @@ $$
 
 `v22_transmit.slx` 把物理层拆为 **前后导与首尾同步标记 → 自同步扰码 → 差分象限与幅度映射 → 每符号插零扩展 → RRC 成形 → 复基带上变频**。每步产生一个符号的 16 点音频，600 次更新对应一秒。切换 1200/2400 bps 时，仿真输入同时设置每符号比特数和象限内参考点。
 
-图片读取、载荷格式、HDLC 位填充与 FCS 在 MATLAB 入口完成，产生模型的 `frameBits`；模型完成同步外层及其后的调制。`v22_emit` 与 GUI 共用 `v22_modulate`，通过 `Simulink.SimulationInput` 和 `sim` 取得音频，保留滤波拖尾并按整段峰值归一化。此流程不生成发送 C 代码，也不改变接收模型的同步、判决或 BER 规则。
+图片读取、载荷格式、HDLC 位填充与 FCS 在 MATLAB 入口完成，产生模型的 `frameBits`；模型完成同步外层及其后的调制。`v22_emit` 与 GUI 共用 `v22_modulate`，默认运行 `private/v22_mod_matlab.m` 中的原 MATLAB 调制算法。选择 Simulink 发送时，通过 `Simulink.SimulationInput` 和 `sim` 取得音频，保留滤波拖尾并按整段峰值归一化。此流程不生成发送 C 代码，也不改变接收模型的同步、判决或 BER 规则。
 
 ## 板上接收链：从采样点到复符号
 

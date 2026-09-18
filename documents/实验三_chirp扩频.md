@@ -19,7 +19,7 @@ flowchart LR
 
 `chirp_transmit.slx` 按 **前导与图片组帧 → 上扫与下扫映射 → 线性扫频相位 → 余弦音频** 连接。组帧模块接收图片比特，加入前导、首尾 m 序列和保护符号；每步生成一个 800 点 chirp，符号之间按原实现重新开始相位。
 
-`bok_emit` 与 GUI 共用 `chirp_modulate`，直接调用 `sim`，取出模型音频后播放。发送模型无需生成 C；接收端仍按原来的匹配滤波与判决链运行。
+`bok_emit` 与 GUI 共用 `chirp_modulate`，默认运行 `private/chirp_modulate_matlab.m` 中的 MATLAB 算法。选择 Simulink 发送时，直接调用 `sim`，取出模型音频后播放。发送模型无需生成 C；接收端仍按原来的匹配滤波与判决链运行。
 
 ## 扫频波形如何表示比特
 

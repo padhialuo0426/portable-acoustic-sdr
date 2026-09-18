@@ -12,10 +12,10 @@ function gui()
 %   窗口内就能解。默认 1s 前导 + 2s 尾部余量足够。
 %
 %   界面骨架、板上连接、同步编译、电平校准都在 common/matlab/+asdr 里，
-%   三个实验共用；本文件只提供 chirp 特有的组帧/调制/解码。
+%   五个实验共用；本文件只提供 chirp 特有的组帧/调制/解码。
 %
 %   注意：本界面是便利封装。教学正路仍是 bok_emit / bok_rev 两个脚本手动跑
-%   （见 documents/手把手部署运行教程.md）。GUI 与脚本共用 Simulink 发送模型。
+%   （见 documents/手把手部署运行教程.md）。GUI 可选择 MATLAB 脚本或 Simulink 模型发送。
 
     here = fileparts(mfilename('fullpath'));
     if isempty(here), here = pwd; end
@@ -56,7 +56,7 @@ function meta = prepare(app, P)
     name = app.ui.img.Value;
     [info_all, NN, MM] = asdr.ImageUI.readBits(P.imgdir, name);
     L    = NN*MM;
-    x = chirp_modulate(info_all);
+    x = chirp_modulate(info_all,app.ui.txBackend.Value);
 
     meta.x        = x;
     meta.dur      = numel(x) / P.fs;

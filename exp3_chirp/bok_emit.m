@@ -6,7 +6,7 @@
 here = fileparts(mfilename('fullpath'));  if isempty(here), here = pwd; end
 imgdir   = fullfile(here,'baseband_images');
 img_name = 'ren128b.bmp';          % ← 改这里即可切换图片(同目录其它 bmp)
-%% 音频参数（对应发送模型） %%
+%% 音频参数 %%
 fs=8000;
 T=.1;
 
@@ -25,11 +25,12 @@ for m=1:MM
 end
 L=NN*MM;                             %图片比特数
 
-%% 在 Simulink 中组帧与调制 %%
-% GUI 使用同一个模型，不需要生成发送端 C 代码。
+%% 选择发送实现，组帧与调制 %%
+% GUI 使用同一波形入口，可选择 MATLAB 或 Simulink，不需要生成发送端 C。
 code=50+L+5;
 save(fullfile(here,'info_all.mat'),'info_all');
-LFM=chirp_modulate(info_all);
+TX_BACKEND='matlab';        % 'matlab' 或 'simulink'
+LFM=chirp_modulate(info_all,TX_BACKEND);
 
 %% 产生声音 %%
 fprintf('发送 %s  %dx%d=%d 位  符号数=%d  时长=%.1fs\n', img_name, MM, NN, L, code, code*T);

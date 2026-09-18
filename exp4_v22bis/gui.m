@@ -8,7 +8,7 @@ function gui()
 %     → 取回 v22sym.mat → 判决/差分/解扰/HDLC → 显示 BER 与还原点阵
 %
 %   界面骨架、板上连接、同步编译、电平校准都在 common/matlab/+asdr 里，
-%   四个实验共用；本文件只提供 V.22bis 特有的组帧/调制/解码。
+%   五个实验共用；本文件只提供 V.22bis 特有的组帧/调制/解码。
 %
 %   与实验二/三的 gui.m 有一处结构差别：那两个能直接用
 %   asdr.ImageUI.analyze（板上出的是 2×N 的标量判决流，解码就是扫 m 序列）；
@@ -111,7 +111,7 @@ function meta = prepare(app, P)
     name = app.ui.img.Value;
     Pm   = v22_params(pickRate(app));
     [payload, NN, MM] = v22_img2payload(P.imgdir, name, Pm.bps);
-    x = v22_mod(v22_pack(payload), Pm);
+    x = v22_mod(v22_pack(payload), Pm, app.ui.txBackend.Value);
 
     meta.x       = x / max(abs(x));
     meta.dur     = numel(x) / Pm.fs;
