@@ -15,9 +15,7 @@ function gui()
 %   三个实验共用；本文件只提供 chirp 特有的组帧/调制/解码。
 %
 %   注意：本界面是便利封装。教学正路仍是 bok_emit / bok_rev 两个脚本手动跑
-%   （见 documents/手把手部署运行教程.md）。为了让那两个脚本保持可独立通读，
-%   本文件自带了等价的组帧/解码逻辑，没有把它们重构成函数——**改帧结构时
-%   两边都要改**。
+%   （见 documents/手把手部署运行教程.md）。GUI 与脚本共用 Simulink 发送模型。
 
     here = fileparts(mfilename('fullpath'));
     if isempty(here), here = pwd; end
@@ -25,10 +23,6 @@ function gui()
 
     P.fs = 8000;               % 采样率
     P.T  = 0.1;                % 符号时间
-    P.B  = 200;                % 扫频带宽
-    P.fc = 1000;               % 中心频率
-    P.n  = 800;                % 每符号采样点数 = fs*T
-    P.mseq  = [1 0 0 1 1 0 1 0 1 1 1 1 0 0 0];
     P.GUARD = 5;               % 补偿接收 1 符号时延、防 EOF 截断
     P.imgdir = fullfile(here,'baseband_images');
 
@@ -62,25 +56,10 @@ function meta = prepare(app, P)
     name = app.ui.img.Value;
     [info_all, NN, MM] = asdr.ImageUI.readBits(P.imgdir, name);
     L    = NN*MM;
-    code = 50 + L + P.GUARD;
-    info = zeros(1, code);
-    info(1:10)      = 0;                          % 信号检测前导
-    info(11:20)     = [1 0 1 0 1 0 1 0 1 0];      % 交替段
-    info(21:35)     = P.mseq;                     % 帧头
-    info(36:35+L)   = info_all;                   % 图片信息
-    info(36+L:50+L) = P.mseq;                     % 帧尾
-    % 其余为 GUARD 个 0：补偿接收 1 符号时延、防 EOF 截断
-
-    t = linspace(0, P.T, P.n);
-    k = P.B / P.T;
-    miu = ones(1, code);  miu(info == 1) = -1;    % 码元0->上扫, 1->下扫
-    x = zeros(1, code*P.n);
-    for i = 1:code
-        x((i-1)*P.n+1 : i*P.n) = real(exp(1i*(2*pi*P.fc*t + pi*miu(i)*k*t.^2)));
-    end
+    x = chirp_modulate(info_all);
 
     meta.x        = x;
-    meta.dur      = code * P.T;
+    meta.dur      = numel(x) / P.fs;
     meta.desc     = sprintf('%s  %dx%d=%d 位', name, MM, NN, L);
     meta.info_all = info_all;
     meta.NN = NN;  meta.MM = MM;

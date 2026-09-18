@@ -26,7 +26,7 @@
 ## 快速开始
 
 1. 按[部署运行教程](documents/手把手部署运行教程.md#准备环境)准备 MATLAB 及代码生成产品、Linux 开发板和音频通路。
-2. 按[构建与部署](documents/构建与部署.md#生成模型代码)生成接收模型 C，再上传到板上编译。生成 C 不入库，新克隆后需先生成一次。
+2. 按[构建与部署](documents/构建与部署.md#生成模型代码)生成接收模型 C，再上传到板上编译。生成 C 不入库，新克隆后需先生成一次；发送 GUI 与脚本直接仿真 Simulink 模型，无需生成发送 C。
 3. 按[实验一操作步骤](documents/手把手部署运行教程.md#实验一)先启动采集，再播放 1 kHz 单音，取回数据查看频谱。
 4. 再切换到图片实验，检查还原点阵、BER 和实验四星座图；实验五观察逐行图像恢复与像素误差。
 
@@ -45,23 +45,25 @@
 └── exp5_sstv/           实验五 · SSTV 多模式，默认二值化，可保留彩色
 ```
 
-实验一至三的入口是扁平的，`.slx` 与各 `.m` 脚本都直接放在根下，子目录只有
-`src/`（手写 C）和 `py/`（板上脚本）这两类代码，外加存数据的 `sample_data/`
-与 `baseband_images/`（实验一只有 `src/`）：
+五个实验的 GUI、收发入口、建模脚本与 `.slx` 放在实验根目录，发送模块源码放在 `model/`。例如实验二：
 
 ```text
     exp2_dpsk/
-    ├── Makefile             板上构建入口
-    ├── dpsk_receive.slx         Simulink 模型（只在 PC 上打开，不上板）
-    ├── dpsk_receive_ert_rtw/    模型生成的 C（**不入库**，MATLAB 里生成）
-    ├── src/                 手写 C：main.c  model_glue.c  model_iface.h
-    ├── py/                  板上 Python 发射/解码脚本
+    ├── Makefile                  Linux 接收程序的构建入口
+    ├── dpsk_receive.slx           接收模型，用于生成 C
+    ├── dpsk_transmit.slx          发送模型，GUI 直接仿真
+    ├── build_tx_model.m           重建发送模型
+    ├── dpsk_modulate.m            脚本与 GUI 共用的波形入口
+    ├── model/tx_*.m               分立发送模块源码
+    ├── dpsk_receive_ert_rtw/       接收模型生成 C（不入库）
+    ├── src/                      手写接收运行时
+    ├── py/                       Python 发射与解码脚本
     ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
-    ├── sample_data/         离线试解码用的样例
-    └── baseband_images/     基带图片，MATLAB 与板上 py 都读它（实验一无此项）
+    ├── sample_data/              随仓库提供的接收样例
+    └── baseband_images/           基带图片
 ```
 
-实验四、五将内部算法放在 `private/`、模型源文件放在 `model/`；收发、GUI 和建模入口留在实验根目录。
+实验四、五的内部 MATLAB 算法放在 `private/`；实验五发送模型另带 `sstv_transmit.sldd` 总线类型字典。接收模型生成与发送模型直接仿真的分工见[构建与部署](documents/构建与部署.md)。
 
 ## 致谢与许可
 

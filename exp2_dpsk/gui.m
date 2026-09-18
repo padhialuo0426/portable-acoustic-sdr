@@ -15,21 +15,14 @@ function gui()
 %   三个实验共用；本文件只提供 DPSK 特有的组帧/调制/解码。
 %
 %   注意：本界面是便利封装。教学正路仍是 dpsk_emit / dpsk_rev 两个脚本手动跑
-%   （见 documents/手把手部署运行教程.md）。为了让那两个脚本保持可独立通读，
-%   本文件自带了等价的组帧/解码逻辑，没有把它们重构成函数——**改帧结构时
-%   两边都要改**。
+%   （见 documents/手把手部署运行教程.md）。GUI 与脚本共用 Simulink 发送模型。
 
     here = fileparts(mfilename('fullpath'));
     if isempty(here), here = pwd; end
     addpath(fullfile(here,'..','common','matlab'));   % +asdr 共用层
 
     P.fs   = 8000;             % 采样率
-    P.fm   = 100;              % 码元速率
-    P.fc   = 1000;             % 载波
-    P.N    = P.fs/P.fm;        % 每码元采样点数 = 80
-    P.T    = 1/P.fm;           % 码元时间
-    P.beta = 0.5;              % 成形滤波滚降系数
-    P.mseq  = [1 0 0 1 1 0 1 0 1 1 1 1 0 0 0];
+    P.N    = 80;               % 发送模型每码元采样点数
     P.GUARD = 80;              % 帧尾保护码元：盖过模型 40 码元的流水延迟
     P.imgdir = fullfile(here,'baseband_images');
 
@@ -63,40 +56,9 @@ function meta = prepare(app, P)
     name = app.ui.img.Value;
     [info_all, NN, MM] = asdr.ImageUI.readBits(P.imgdir, name);
     L    = NN*MM;
-    code = 56 + L + P.GUARD;
-    info = zeros(1, code);
-    info(1:18)      = 0;                          % 静默/信号检测
-    info(19:26)     = [0 1 0 1 0 1 0 1];          % 交替段
-    info(27:41)     = P.mseq;                     % 帧头
-    info(42:41+L)   = info_all;                   % 图片信息
-    info(42+L:56+L) = P.mseq;                     % 帧尾
-    % 其余为 GUARD 个 0：盖过接收模型 40 码元的流水延迟，否则帧尾
-    % m 序列还没流出管线信号就结束了
+    x = dpsk_modulate(info_all);
 
-    % 差分编码：与参考相位相同 -> +1，不同 -> -1
-    temp = zeros(1, code+1);  ds = zeros(1, code);
-    for i = 1:code
-        if info(i) == temp(i)
-            temp(i+1) = 0;  ds(i) =  1;
-        else
-            temp(i+1) = 1;  ds(i) = -1;
-        end
-    end
-
-    % 平方根升余弦成形（z 加 eps 避开 0/0 的可去奇点）
-    k = P.N;  md = 1;  b = P.beta;
-    n = 1:2*md*k;
-    z = (n/k) - md + eps;
-    num = cos((1+b)*pi*z) + sin((1-b)*pi*z) .* (1./(4*b*z));
-    den = 1 - 16*b*b*z.*z;
-    h1  = (4*b/(pi*sqrt(P.T))) * num ./ den;
-
-    % conv(upsample(ds,N), h1) 后调制到载波
-    sq  = conv(upsample(ds, P.N), h1);
-    idx = 0:numel(sq)-1;
-    x   = sq .* sin(2*pi*P.fc*idx/P.fs);
-
-    meta.x        = x / max(abs(x));
+    meta.x        = x;
     meta.dur      = numel(x) / P.fs;
     meta.desc     = sprintf('%s  %dx%d=%d 位', name, MM, NN, L);
     meta.info_all = info_all;

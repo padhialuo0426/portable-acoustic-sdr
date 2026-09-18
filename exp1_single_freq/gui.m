@@ -53,8 +53,7 @@ function buildResults(app, panel)
 end
 
 function y = makeTone(app, P, sec)
-    t = (0:round(sec*P.fs)-1)/P.fs;
-    y = sin(2*pi*app.ui.fc.Value*t);
+    y = single_fre_modulate(app.ui.fc.Value,round(sec*P.fs));
 end
 
 function meta = prepare(app, P)
