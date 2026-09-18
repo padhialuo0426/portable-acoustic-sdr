@@ -32,7 +32,7 @@ function build_model(modelFile)
             line=add_line(mdl,[chain{k} '/1'],[chain{k+1} '/1'],'autorouting','on');set_param(line,'Name',signals{k});
         end
     end
-    note(mdl,[30 25 1040 65],'SSTV Martin M1 接收机｜采样率 48000 赫兹｜每帧 0.1 秒：4800 个采样 → 4800 个频率值');
+    note(mdl,[30 25 1040 65],'SSTV 多模式接收机｜采样率 48000 赫兹｜每帧 0.1 秒：4800 个采样 → 4800 个频率值');
     note(mdl,[110 250 710 310],'① 归一化后以 1900 赫兹为中心下变频。97 抽头低通抑制混频镜像，本振与滤波器状态跨帧保留。');
     note(mdl,[780 250 1090 335],'② 相邻复样本的相位差恢复音频频率。低电平输出零；电脑继续识别 VIS、锁定行同步并还原图片。');
     set_param(mdl,'SolverType','Fixed-step','FixedStep','0.1','StopTime','inf', ...

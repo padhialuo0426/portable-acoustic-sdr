@@ -24,7 +24,7 @@
 | [实验二 · DPSK](实验二_DPSK.md) | 差分编码、脉冲成形、码元同步和帧同步 |
 | [实验三 · chirp 扩频](实验三_chirp扩频.md) | 上下扫频、相关检测和多速率接收模型 |
 | [实验四 · V.22bis](实验四_V22bis.md) | QPSK/16-QAM、匹配滤波、定时与载波恢复、HDLC/FCS |
-| [实验五 · SSTV](实验五_SSTV.md) | Martin M1、VIS 模式识别、二值/彩色逐行扫描、鉴频与图像质量 |
+| [实验五 · SSTV](实验五_SSTV.md) | Martin / Scottie / Robot / PD 等 20 种模式、VIS 模式识别、二值/彩色逐行扫描、鉴频与图像质量 |
 
 ## 工程如何分工
 

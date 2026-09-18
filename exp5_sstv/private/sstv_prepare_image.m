@@ -1,5 +1,5 @@
 function image = sstv_prepare_image(filename, binary, P)
-%SSTV_PREPARE_IMAGE  读任意支持的图片，等比缩放并居中补白到 320×256。
+%SSTV_PREPARE_IMAGE  读任意支持的图片，等比缩放并补白到所选模式的尺寸。
 % 默认二值化使用固定的半量程亮度门限；关闭后保留 RGB 颜色。
     [source,map,alpha] = imread(filename);
     if ~isempty(map)
@@ -41,4 +41,7 @@ function image = sstv_prepare_image(filename, binary, P)
     image=uint8(255*ones(P.height,P.width,3));
     top=floor((P.height-nh)/2);left=floor((P.width-nw)/2);
     image(top+(1:nh),left+(1:nw),:)=uint8(round(255*resized));
+    if strcmp(P.color,'mono')
+        channels=sstv_color(image,'encode');image=repmat(uint8(round(channels(:,:,1))),1,1,3);
+    end
 end

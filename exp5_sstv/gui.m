@@ -1,11 +1,11 @@
 function gui()
-%GUI  实验五 SSTV Martin M1：默认发送二值图，也可选择任意图片保留彩色。
+%GUI  实验五 SSTV 多模式：默认发送二值图，也可选择任意图片保留彩色。
     here=fileparts(mfilename('fullpath'));addpath(fullfile(here,'..','common','matlab'));
-    spec.title='实验五 · SSTV Martin M1 图像传输';
+    spec.title='实验五 · SSTV 多模式图像传输';
     spec.binary='sstv_rx';spec.outMat='sstvfreq.mat';spec.fs=48000;spec.showDuration=true;
     spec.buildParams=@(app,g,lab)buildParams(app,g,lab,here);
     spec.buildResults=@(app,panel)buildResults(app,panel);
-    spec.durationText=@(~)durationText();
+    spec.durationText=@(app)durationText(app);
     spec.prepare=@(app)prepare(app);
     spec.analyze=@(app,file,meta)analyze(app,file,meta);
     % 校准只播放 1900 Hz 音调，不必先生成两分钟图像波形。
@@ -13,14 +13,16 @@ function gui()
     asdr.App(spec,here);
 end
 function buildParams(app,g,lab,here)
-    lab('SSTV 模式');uilabel(g,'Text','Martin M1 · 320×256');
+    modes=sstv_modes();
+    lab('SSTV 模式');app.ui.mode=uidropdown(g,'Items',{modes.mode},'ItemsData',{modes.id}, ...
+        'Value','M1','ValueChangedFcn',@(~,~)preview(app));app.track(app.ui.mode);
     lab('发送图片');row=uigridlayout(g,[1 2]);row.ColumnWidth={'1x',50};row.Padding=[0 0 0 0];row.ColumnSpacing=4;
     app.ui.imageFile=uieditfield(row,'text','Editable','off', ...
         'Value',fullfile(here,'baseband_images','ren512b.bmp'));
     app.ui.chooseImage=uibutton(row,'Text','选择', 'ButtonPushedFcn',@(~,~)chooseImage(app));
     app.track(app.ui.chooseImage);
     lab('图片处理');app.ui.binary=uicheckbox(g,'Text','二值化发送','Value',true, ...
-        'Tooltip','关闭后发送原图颜色；图片均等比缩放并补白到 320×256。', ...
+        'Tooltip','关闭后发送原图颜色；图片均等比缩放并补白到所选模式的尺寸；B&W 模式始终只传灰度。', ...
         'ValueChangedFcn',@(~,~)preview(app));app.track(app.ui.binary);
 end
 function chooseImage(app)
@@ -28,7 +30,7 @@ function chooseImage(app)
     if isequal(name,0),return,end
     file=fullfile(folder,name);
     try
-        sstv_prepare_image(file,app.ui.binary.Value,sstv_params());
+        sstv_prepare_image(file,app.ui.binary.Value,sstv_params(app.ui.mode.Value));
     catch e
         app.logStep('图片','✗','%s',asdr.firstLine(e.message));return
     end
@@ -46,24 +48,24 @@ function buildResults(app,panel)
     app.ui.axF=uiaxes(g);app.ui.axF.Layout.Row=[4 5];app.ui.axF.Layout.Column=2;
     resetResults(app);
 end
-function [text,duration]=durationText()
-    P=sstv_params();duration=round(P.duration*P.fs)/P.fs;
-    text=sprintf('%.2f s（320×256，VIS 44，G/B/R）',duration);
+function [text,duration]=durationText(app)
+    P=sstv_params(app.ui.mode.Value);duration=round(P.duration*P.fs)/P.fs;
+    text=sprintf('%.2f s（%d×%d，VIS %d）',duration,P.width,P.height,P.vis);
 end
 function preview(app)
     resetResults(app);app.refreshTiming();
     try
-        source=sstv_prepare_image(app.ui.imageFile.Value,app.ui.binary.Value,sstv_params());
+        source=sstv_prepare_image(app.ui.imageFile.Value,app.ui.binary.Value,sstv_params(app.ui.mode.Value));
         showImage(app.ui.axTx,source,'本次发送图片');
     catch e
         app.logStep('图片','✗','%s',asdr.firstLine(e.message));
     end
 end
 function meta=prepare(app)
-    resetResults(app);P=sstv_params();binary=app.ui.binary.Value;
+    resetResults(app);P=sstv_params(app.ui.mode.Value);binary=app.ui.binary.Value;
     reference=sstv_prepare_image(app.ui.imageFile.Value,binary,P);
     [audio,tx]=sstv_modulate(reference,P);
-    meta=struct('x',audio,'dur',tx.duration,'desc','Martin M1 · 320×256', ...
+    meta=struct('x',audio,'dur',tx.duration,'desc',sprintf('%s · %d×%d',P.mode,P.width,P.height), ...
         'reference',reference,'binary',binary,'P',P);
     showImage(app.ui.axTx,reference,'本次发送图片');
 end
@@ -90,7 +92,10 @@ function analyze(app,file,meta)
     xlabel(app.ui.axF,'采集时间（秒）');ylabel(app.ui.axF,'音频频率（赫兹）');title(app.ui.axF,'VIS 与首行音调');
     app.logStep('SSTV','·','%s',result.message);
     if isempty(result.image),return,end
-    showImage(app.ui.axRx,result.image,sprintf('本次接收：%d/256 行（未解行灰色）',sum(result.validRows)));
+    showImage(app.ui.axRx,result.image,sprintf('%s：%d/%d 行（未解行灰色）',result.mode,sum(result.validRows),result.height));
+    if ~strcmp(result.modeId,meta.P.id)
+        app.ui.detailTxt.Text='接收模式与本次发送设置不同，仅显示实收图片，不计算参考误差。';return
+    end
     metrics=sstv_metrics(result,meta.reference,meta.binary);app.ui.lastMetrics=metrics;
     if metrics.available
         if meta.binary
@@ -99,7 +104,7 @@ function analyze(app,file,meta)
             app.ui.qualityTxt.Text=sprintf('有效行图像质量：PSNR %.2f dB',metrics.psnr);
         end
         app.ui.detailTxt.Text=sprintf('有效行 MAE %.2f / 255，PSNR %.2f dB；行时钟偏差 %+.0f ppm',metrics.mae,metrics.psnr,result.clockPpm);
-        app.logStep('图像质量','·','MAE %.3f，PSNR %.2f dB，完整行 %d/256',metrics.mae,metrics.psnr,sum(result.validRows));
+        app.logStep('图像质量','·','MAE %.3f，PSNR %.2f dB，完整行 %d/%d',metrics.mae,metrics.psnr,sum(result.validRows),result.height);
         if meta.binary,app.logf('二值像素误差：%d/%d；缺失行不参与比较。',metrics.pixelErrors,metrics.pixels);end
     end
 end
