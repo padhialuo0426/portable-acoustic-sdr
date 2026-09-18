@@ -1,4 +1,4 @@
-function frames = v22_unpack(bits)
+function [frames, detail] = v22_unpack(bits)
 %V22_UNPACK  从一条连续比特流里找出所有 HDLC 帧并校验 FCS
 %
 %   frames = v22_unpack(bits)   bits 为 0/1 向量（板上解扰后的判决流）。
@@ -7,6 +7,7 @@ function frames = v22_unpack(bits)
 %       .ok       logical，FCS 是否通过
 %       .pos      该帧起始标志在 bits 中的下标
 %       .endPos   该帧结束标志最后一位的下标（含标志和位填充的原始位置）
+%   第二输出 detail 统计各阶段结果；未通过格式检查的区间不计入 frames。
 %
 %   与本工程前三个实验的关键差别：**不需要 m 序列做帧同步**。HDLC 的
 %   0x7E 标志加位填充本身就保证了帧边界唯一可判——数据段里永远出不来
@@ -20,20 +21,28 @@ function frames = v22_unpack(bits)
     bits  = bits(:).';
     flag  = [0 1 1 1 1 1 1 0];
     frames = struct('payload',{},'ok',{},'pos',{},'endPos',{});
+    detail = struct('flagCount',0,'intervalCount',0,'shortCount',0, ...
+        'stuffingErrorCount',0,'lengthErrorCount',0,'candidateCount',0, ...
+        'fcsPassed',0,'fcsFailed',0);
 
     % --- 找出所有标志位置 ---
     n = numel(bits);
-    if n < 16, return, end
+    if n < 8, return, end
     loc = [];
     for i = 1:n-7
         if isequal(bits(i:i+7), flag), loc(end+1) = i; end %#ok<AGROW>
     end
+    detail.flagCount = numel(loc);
+    detail.intervalCount = max(0,numel(loc)-1);
     if numel(loc) < 2, return, end
 
     % --- 相邻两个标志之间即为一帧 ---
     for j = 1:numel(loc)-1
         s = loc(j) + 8;  e = loc(j+1) - 1;
-        if e - s + 1 < 24, continue, end        % 至少要容下 FCS + 1 字节
+        if e - s + 1 < 24                      % 至少要容下 FCS + 1 字节
+            detail.shortCount = detail.shortCount + 1;
+            continue
+        end
 
         % 去位填充：连续 5 个 1 之后那个 0 是插进来的，丢掉
         seg = bits(s:e);
@@ -55,9 +64,15 @@ function frames = v22_unpack(bits)
             end
             i = i + 1;
         end
-        if bad, continue, end
+        if bad
+            detail.stuffingErrorCount = detail.stuffingErrorCount + 1;
+            continue
+        end
         dst = dst(1:m);
-        if mod(numel(dst), 8) ~= 0, continue, end     % 帧长必须是整字节
+        if mod(numel(dst), 8) ~= 0 || numel(dst) < 24
+            detail.lengthErrorCount = detail.lengthErrorCount + 1;
+            continue
+        end
 
         % 比特 -> 字节（低位先发）
         nb = numel(dst)/8;
@@ -77,4 +92,7 @@ function frames = v22_unpack(bits)
                                'ok', got == v22_crc16(payload), ...
                                'pos', loc(j), 'endPos', loc(j+1)+7); %#ok<AGROW>
     end
+    detail.candidateCount = numel(frames);
+    detail.fcsPassed = sum([frames.ok]);
+    detail.fcsFailed = detail.candidateCount - detail.fcsPassed;
 end

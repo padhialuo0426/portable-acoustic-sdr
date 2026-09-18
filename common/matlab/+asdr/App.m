@@ -13,6 +13,7 @@ classdef App < handle
 %                             meta.dur(信号秒数)、meta.desc(日志里描述发什么)
 %                             可选 meta.receiverArgs 为接收程序的参数 cellstr
 %     analyze    @(app,matfile,meta)  解码/分析并渲染结果面板
+%                             完成实采后附带唯一 meta.captureId；仅解码时不附带
 %     buildResults @(app,parentGrid)  建结果面板（BER+点阵 / 频谱）
 %
 %   spec 选填字段：
@@ -362,6 +363,7 @@ classdef App < handle
                 app.logStep('取回数据', '✓', '%s', app.spec.outMat);
 
                 % 5) 解码/分析
+                meta.captureId = char(java.util.UUID.randomUUID());
                 app.spec.analyze(app, localMat, meta);
             catch e
                 app.logStep('一键实测', '✗', '%s', asdr.firstLine(e.message));
