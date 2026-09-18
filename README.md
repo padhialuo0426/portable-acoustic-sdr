@@ -4,8 +4,8 @@
 接收端在**任意 Linux**（x86 / 树莓派 / Jetson / 香橙派 / 其它 ARM 板）上 `gcc` 直接编译运行，
 只依赖 `libasound`(ALSA) + `pthread`，**不需要 MathWorks 硬件支持包**。
 
-含三个实验：**实验一 单频信号测试**、**实验二 DPSK 差分相移键控**、
-**实验三 线性调频(chirp)扩频通信**
+含四个实验：**实验一 单频信号测试**、**实验二 DPSK 差分相移键控**、
+**实验三 线性调频(chirp)扩频通信**、**实验四 V.22bis 风格的 QPSK/16-QAM 图片传输**
 
 ## 文档
 
@@ -15,6 +15,7 @@
 - [`documents/实验一_单频信号.md`](documents/实验一_单频信号.md) — 实验一逐目录文件说明 + 用法
 - [`documents/实验二_DPSK.md`](documents/实验二_DPSK.md) — 实验二逐目录文件说明 + 用法
 - [`documents/实验三_chirp扩频.md`](documents/实验三_chirp扩频.md) — 实验三逐目录文件说明 + 用法
+- [`documents/实验四_V22bis.md`](documents/实验四_V22bis.md) — 实验四逐目录文件说明 + QPSK/16-QAM 收发与用法
 - [`documents/手把手部署运行教程.md`](documents/手把手部署运行教程.md) — **从零到实测分步操作**（传代码上板→编译→实测→解码）
 - [`documents/Q&A.md`](documents/Q&A.md) — **常见问题与坑点**（先看这个）
 
@@ -47,9 +48,10 @@ arecord -l                           # 看麦克风是 card 几
 ├── common/              跨实验共享：板级底层(ALSA + MAT) + matlab/(GUI 共用层)
 ├── exp1_single_freq/    实验一 · 单频信号测试
 ├── exp2_dpsk/           实验二 · DPSK 差分相移键控
-└── exp3_chirp/          实验三 · chirp 扩频通信
+├── exp3_chirp/          实验三 · chirp 扩频通信
+└── exp4_v22bis/         实验四 · QPSK / 16-QAM 图片传输
 
-每个实验目录是扁平的，`.slx` 与各 `.m` 脚本都直接放在根下，子目录只有
+实验一至三的入口是扁平的，`.slx` 与各 `.m` 脚本都直接放在根下，子目录只有
 `src/`（手写 C）和 `py/`（板上脚本）这两类代码，外加存数据的 `sample_data/`
 与 `baseband_images/`（实验一只有 `src/`）：
 
@@ -63,6 +65,8 @@ arecord -l                           # 看麦克风是 card 几
     ├── sample_data/         离线试解码用的样例
     └── baseband_images/     基带图片，MATLAB 与板上 py 都读它（实验一无此项）
 ```
+
+实验四将内部算法放在 `private/`、模型源文件放在 `model/`，全部验证代码和诊断产物放在 `tests/`；收发、GUI 和建模入口留在实验根目录。
 
 ## 致谢与许可
 

@@ -33,32 +33,8 @@ for k = 1:nF
     sym((k-1)*60 + (1:60)) = c(1:2:end) + 1i*c(2:2:end);
 end
 
-%% 判决 + 差分解码 %%
-dec = zeros(1, numel(sym)*P.bps);  qp = 0;
-for k = 1:numel(sym)
-    z = sym(k);
-    if     real(z)>=0 && imag(z)>=0, qi = 0;
-    elseif real(z)< 0 && imag(z)>=0, qi = 1;
-    elseif real(z)< 0 && imag(z)< 0, qi = 2;
-    else,                            qi = 3;
-    end
-    p1 = z * exp(-1i*90*qi*pi/180);
-    [~, li] = min(abs(p1 - P.inQ));
-    dq = mod(90*qi - qp, 360);  qp = 90*qi;
-    hi = find(P.quadRot == dq, 1) - 1;
-    if P.bps == 4
-        dec((k-1)*4+(1:4)) = [bitget(hi,2) bitget(hi,1) bitget(li-1,2) bitget(li-1,1)];
-    else
-        dec((k-1)*2+(1:2)) = [bitget(hi,2) bitget(hi,1)];
-    end
-end
-
-%% 自同步解扰（不需要与发端对齐，17 位后自动同步）%%
-st = zeros(1, P.scrLen);  bits = zeros(size(dec));
-for i = 1:numel(dec)
-    bits(i) = xor(dec(i), xor(st(P.scrTaps(1)), st(P.scrTaps(2))));
-    st = [dec(i) st(1:end-1)];
-end
+%% 判决 + 差分解码 + 自同步解扰 %%
+bits = v22_symbols_to_bits(sym, P);
 
 %% HDLC 解帧 %%
 frames = v22_unpack(bits);

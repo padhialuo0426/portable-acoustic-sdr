@@ -51,13 +51,24 @@ function buildParams(app, gL, lab, P)
 end
 
 function buildResults(app, panel)
-    g = uigridlayout(panel, [2 3]);  g.RowHeight = {28,'1x'};
+    g = uigridlayout(panel, [3 2]);
+    g.RowHeight = {28,'1x','1x'};
+    g.ColumnWidth = {'1x','1.5x'};
     app.ui.berTxt = uilabel(g,'Text','BER: —','FontSize',16,'FontWeight','bold');
-    app.ui.berTxt.Layout.Column = [1 3];
+    app.ui.berTxt.Layout.Row = 1; app.ui.berTxt.Layout.Column = [1 2];
     app.ui.axTx = uiaxes(g);  title(app.ui.axTx,'发送点阵');  axis(app.ui.axTx,'off');
+    app.ui.axTx.Layout.Row = 2; app.ui.axTx.Layout.Column = 1;
     app.ui.axRx = uiaxes(g);  title(app.ui.axRx,'接收还原');  axis(app.ui.axRx,'off');
-    % 星座图：16-QAM 解不出时，看一眼星座就知道是噪声、过载还是相位没锁
-    app.ui.axC  = uiaxes(g);  title(app.ui.axC,'接收星座');  grid(app.ui.axC,'on');
+    app.ui.axRx.Layout.Row = 3; app.ui.axRx.Layout.Column = 1;
+    cg = uigridlayout(g,[2 1]); cg.RowHeight = {28,'1x'};
+    cg.Layout.Row = [2 3]; cg.Layout.Column = 2;
+    app.ui.constellationScope = uidropdown(cg, ...
+        'Items',{'有效图片帧','全部接收符号'}, 'Value','有效图片帧', ...
+        'Tooltip','有效图片帧仅显示本次通过 FCS 的图片帧；全部符号包含静音与捕获过程。', ...
+        'ValueChangedFcn',@(~,~) drawConstellation(app));
+    app.track(app.ui.constellationScope);
+    app.ui.axC = uiaxes(cg);
+    resetResults(app);
 end
 
 function r = pickRate(app)
@@ -80,6 +91,8 @@ end
 
 % 组帧 + 调制。直接调用与脚本、仿真同一份实现。
 function meta = prepare(app, P)
+    % 新任务在连接/采集之前就清空旧结果；中止或下载失败也不会遗留成功图。
+    resetResults(app);
     name = app.ui.img.Value;
     Pm   = v22_params(pickRate(app));
     [payload, NN, MM] = v22_img2payload(P.imgdir, name, Pm.bps);
@@ -91,11 +104,17 @@ function meta = prepare(app, P)
     meta.P       = Pm;
     meta.payload = payload;
     meta.NN = NN;  meta.MM = MM;
+    asdr.ImageUI.showBitmap(app.ui.axTx, v22_payload2img(payload), '本次发送点阵');
 end
 
 % 解码：读 v22sym.mat -> 判决/差分/解扰 -> HDLC -> BER + 点阵 + 星座
-function analyze(app, matfile, meta, P)
+function analyze(app, matfile, meta, ~)
+    resetResults(app);
+    app.ui.berTxt.Text = 'BER: 未解出帧';
+    app.ui.berTxt.FontColor = [0.8 0 0];
     Pm = meta.P;
+    imRef = v22_payload2img(meta.payload);
+    asdr.ImageUI.showBitmap(app.ui.axTx, imRef, '本次发送点阵');
     if ~isfile(matfile)
         app.logStep('解码', '✗', '本地没有 %s，先做一次实测', app.spec.outMat); return
     end
@@ -113,34 +132,45 @@ function analyze(app, matfile, meta, P)
         c = V(:,k).';
         sym((k-1)*60 + (1:60)) = c(1:2:end) + 1i*c(2:2:end);
     end
+    app.ui.constellation.all = sym;
+    app.ui.constellation.rate = Pm.rate;
+    drawConstellation(app);
     if ~app.deadStreamOK(all(sym == 0)), return, end
 
-    bits = symbolsToBits(sym, Pm);
+    bits = v22_symbols_to_bits(sym, Pm);
     frames = v22_unpack(bits);
     good   = frames([frames.ok]);
-    app.logStep('HDLC', '✓', '候选帧 %d 个，FCS 通过 %d 个', numel(frames), numel(good));
+    if isempty(good), mark = '✗'; else, mark = '✓'; end
+    app.logStep('HDLC', mark, '候选帧 %d 个，FCS 通过 %d 个', numel(frames), numel(good));
 
     img = [];
     for g = 1:numel(good)
-        try, img = v22_payload2img(good(g).payload); break, catch, end
+        try
+            candidate = v22_payload2img(good(g).payload);
+        catch
+            continue
+        end
+        if isempty(candidate), continue, end
+        img = candidate;
+        % 解扰不改变比特数。用接收帧的真实边界映射回原始复符号，
+        % 包括 HDLC 标志和位填充；不按理想星座判决值重画。
+        first = floor((good(g).pos-1)/Pm.bps)+1;
+        last = ceil(good(g).endPos/Pm.bps);
+        app.ui.constellation.frame = sym(first:last);
+        app.ui.constellation.range = [first last];
+        break
     end
 
-    % 星座图先画——即使解不出帧，它也能说明问题出在哪
-    act = sym(abs(sym) > 0.1*max(abs(sym)));
-    plot(app.ui.axC, real(act), imag(act), '.', 'MarkerSize', 4);
-    axis(app.ui.axC,'equal'); grid(app.ui.axC,'on');
-    title(app.ui.axC, sprintf('接收星座 (%d 符号)', numel(act)));
+    drawConstellation(app);
 
     if isempty(img)
         app.ui.berTxt.Text = 'BER: 未解出帧';
         app.ui.berTxt.FontColor = [0.8 0 0];
         app.logStep('解码', '✗', '没有 FCS 通过的图片帧');
-        app.logf('  看星座图：散成一团=信噪比不够；方块状但转动=相位没锁；');
-        app.logf('  贴边饱和=过载（见 Q&A Q5）。弱信道可把「速率」换成 1200 bps');
+        app.logf('  可将星座范围切换为「全部接收符号」检查捕获过程；其中也包含静音和噪声。');
         return
     end
 
-    imRef = v22_payload2img(meta.payload);
     if isequal(size(img), size(imRef))
         nbad = sum(img(:) ~= imRef(:));
         L = numel(img);
@@ -152,35 +182,57 @@ function analyze(app, matfile, meta, P)
             app.ui.berTxt.FontColor = [0.8 0 0];
             app.logStep('BER', '△', '%.4f 有误码，检查电平/环境噪声', nbad/L);
         end
+    else
+        app.ui.berTxt.Text = 'BER: 图片尺寸不同，无法比较';
+        app.ui.berTxt.FontColor = [0.7 0.4 0];
+        app.logStep('BER', '△', '收到 %dx%d，本次参考 %dx%d，跳过误码率比较', ...
+                    size(img,2),size(img,1),size(imRef,2),size(imRef,1));
     end
 
-    asdr.ImageUI.showBitmap(app.ui.axTx, imRef, '发送点阵');
     asdr.ImageUI.showBitmap(app.ui.axRx, img,   '接收还原');
 end
 
-% 判决 + 差分解码 + 自同步解扰（与 v22_rev.m 同一套逻辑）
-function bits = symbolsToBits(sym, Pm)
-    dec = zeros(1, numel(sym)*Pm.bps);  qp = 0;
-    for k = 1:numel(sym)
-        z = sym(k);
-        if     real(z)>=0 && imag(z)>=0, qi = 0;
-        elseif real(z)< 0 && imag(z)>=0, qi = 1;
-        elseif real(z)< 0 && imag(z)< 0, qi = 2;
-        else,                            qi = 3;
-        end
-        p1 = z * exp(-1i*90*qi*pi/180);
-        [~, li] = min(abs(p1 - Pm.inQ));
-        dq = mod(90*qi - qp, 360);  qp = 90*qi;
-        hi = find(Pm.quadRot == dq, 1) - 1;
-        if Pm.bps == 4
-            dec((k-1)*4+(1:4)) = [bitget(hi,2) bitget(hi,1) bitget(li-1,2) bitget(li-1,1)];
-        else
-            dec((k-1)*2+(1:2)) = [bitget(hi,2) bitget(hi,1)];
-        end
+function resetResults(app)
+    cla(app.ui.axTx); axis(app.ui.axTx,'off'); title(app.ui.axTx,'发送点阵');
+    cla(app.ui.axRx); axis(app.ui.axRx,'off'); title(app.ui.axRx,'接收还原（等待本次结果）');
+    app.ui.berTxt.Text = 'BER: —';
+    app.ui.berTxt.FontColor = [0 0 0];
+    app.ui.constellation = struct('all',[],'frame',[],'range',[],'rate',[]);
+    drawConstellation(app);
+end
+
+function drawConstellation(app)
+    ax = app.ui.axC;
+    cla(ax); legend(ax,'off'); hold(ax,'off');
+    d = app.ui.constellation;
+    if strcmp(app.ui.constellationScope.Value,'有效图片帧')
+        points = d.frame; label = '有效图片帧星座';
+        emptyText = '暂无有效图片帧';
+    else
+        points = d.all; label = '全部接收符号（含静音与捕获过程）';
+        emptyText = '暂无本次接收数据';
     end
-    st = zeros(1, Pm.scrLen);  bits = zeros(size(dec));
-    for i = 1:numel(dec)
-        bits(i) = xor(dec(i), xor(st(Pm.scrTaps(1)), st(Pm.scrTaps(2))));
-        st = [dec(i) st(1:end-1)];
+    if isempty(points)
+        axis(ax,'normal'); xlim(ax,[-1 1]); ylim(ax,[-1 1]);
+        text(ax,0.5,0.5,emptyText,'Units','normalized','HorizontalAlignment','center');
+        title(ax,label);
+    else
+        plot(ax,real(points),imag(points),'.','MarkerSize',5,'DisplayName','实收符号');
+        extent = max([abs(real(points)), abs(imag(points))]);
+        % 参考点只作对照，实收点保持原始幅度和相位，不做吸附或美化。
+        if d.rate == 2400
+            Pm = v22_params(2400);
+            ref = reshape(Pm.inQ(:) * [1 1i -1 -1i],1,[]);
+            extent = max([extent, abs(real(ref)), abs(imag(ref))]);
+            hold(ax,'on');
+            plot(ax,real(ref),imag(ref),'kx','MarkerSize',8,'DisplayName','16-QAM 参考');
+            hold(ax,'off'); legend(ax,'show','Location','best');
+        end
+        % 两轴同尺度且关于零对称，让坐标原点始终位于星座图中央。
+        lim = max(1, 1.1*extent);
+        axis(ax,'equal'); xlim(ax,[-lim lim]); ylim(ax,[-lim lim]);
+        title(ax,sprintf('%s（%d 符号）',label,numel(points)));
     end
+    ax.XAxisLocation = 'origin'; ax.YAxisLocation = 'origin';
+    xlabel(ax,'I'); ylabel(ax,'Q'); grid(ax,'on');
 end

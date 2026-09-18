@@ -1,0 +1,270 @@
+{
+  "blocks": [
+    {
+      "path": "v22_receive/AudioIn",
+      "position": [
+        -125,
+        148,
+        -95,
+        162
+      ]
+    },
+    {
+      "path": "v22_receive/AGC and Squelch",
+      "position": [
+        770,
+        116,
+        880,
+        189
+      ]
+    },
+    {
+      "path": "v22_receive/Carrier Recovery",
+      "position": [
+        1025,
+        116,
+        1135,
+        189
+      ]
+    },
+    {
+      "path": "v22_receive/Downconvert",
+      "position": [
+        185,
+        118,
+        295,
+        192
+      ]
+    },
+    {
+      "path": "v22_receive/IQ Pack",
+      "position": [
+        1295,
+        120,
+        1395,
+        190
+      ]
+    },
+    {
+      "path": "v22_receive/PCM Normalize",
+      "position": [
+        -15,
+        120,
+        85,
+        190
+      ]
+    },
+    {
+      "path": "v22_receive/RRC Matched Filter",
+      "position": [
+        375,
+        120,
+        485,
+        190
+      ]
+    },
+    {
+      "path": "v22_receive/Timing Recovery",
+      "position": [
+        565,
+        118,
+        675,
+        192
+      ]
+    },
+    {
+      "path": "v22_receive/symOut",
+      "position": [
+        1505,
+        148,
+        1535,
+        162
+      ]
+    }
+  ],
+  "annotations": [
+    {
+      "text": "③ 输出 120 个实数。电脑继续完成判决、差分解码、解扰、HDLC/FCS 校验和图片还原。",
+      "position": [
+        1040,
+        250,
+        1460,
+        266
+      ]
+    },
+    {
+      "text": "② 符号处理：选择抽样相位、归一化幅度、跟踪载波相位。状态跨帧保留；静噪仅复位载波环。",
+      "position": [
+        545,
+        250,
+        986,
+        266
+      ]
+    },
+    {
+      "text": "① 采样处理：PCM 归一化、相位连续的正交下变频、129 抽头 RRC 匹配滤波。",
+      "position": [
+        95,
+        250,
+        470,
+        266
+      ]
+    },
+    {
+      "text": "V.22bis 接收机｜采样率 9600 Hz｜符号率 600 波特｜每帧 0.1 秒：960 点采样 → 60 个复符号",
+      "position": [
+        30,
+        25,
+        483,
+        41
+      ]
+    }
+  ],
+  "zoom": "80",
+  "lines": [
+    {
+      "source": "v22_receive/AGC and Squelch",
+      "sourcePort": 2,
+      "destination": "v22_receive/Carrier Recovery",
+      "destinationPort": 2,
+      "points": [
+        [
+          885,
+          170
+        ],
+        [
+          1020,
+          170
+        ]
+      ]
+    },
+    {
+      "source": "v22_receive/IQ Pack",
+      "sourcePort": 1,
+      "destination": "v22_receive/symOut",
+      "destinationPort": 1,
+      "points": [
+        [
+          1400,
+          155
+        ],
+        [
+          1500,
+          155
+        ]
+      ]
+    },
+    {
+      "source": "v22_receive/Carrier Recovery",
+      "sourcePort": 1,
+      "destination": "v22_receive/IQ Pack",
+      "destinationPort": 1,
+      "points": [
+        [
+          1140,
+          155
+        ],
+        [
+          1290,
+          155
+        ]
+      ]
+    },
+    {
+      "source": "v22_receive/AGC and Squelch",
+      "sourcePort": 1,
+      "destination": "v22_receive/Carrier Recovery",
+      "destinationPort": 1,
+      "points": [
+        [
+          885,
+          135
+        ],
+        [
+          1020,
+          135
+        ]
+      ]
+    },
+    {
+      "source": "v22_receive/Timing Recovery",
+      "sourcePort": 1,
+      "destination": "v22_receive/AGC and Squelch",
+      "destinationPort": 1,
+      "points": [
+        [
+          680,
+          155
+        ],
+        [
+          765,
+          155
+        ]
+      ]
+    },
+    {
+      "source": "v22_receive/RRC Matched Filter",
+      "sourcePort": 1,
+      "destination": "v22_receive/Timing Recovery",
+      "destinationPort": 1,
+      "points": [
+        [
+          490,
+          155
+        ],
+        [
+          560,
+          155
+        ]
+      ]
+    },
+    {
+      "source": "v22_receive/Downconvert",
+      "sourcePort": 1,
+      "destination": "v22_receive/RRC Matched Filter",
+      "destinationPort": 1,
+      "points": [
+        [
+          300,
+          155
+        ],
+        [
+          370,
+          155
+        ]
+      ]
+    },
+    {
+      "source": "v22_receive/PCM Normalize",
+      "sourcePort": 1,
+      "destination": "v22_receive/Downconvert",
+      "destinationPort": 1,
+      "points": [
+        [
+          90,
+          155
+        ],
+        [
+          180,
+          155
+        ]
+      ]
+    },
+    {
+      "source": "v22_receive/AudioIn",
+      "sourcePort": 1,
+      "destination": "v22_receive/PCM Normalize",
+      "destinationPort": 1,
+      "points": [
+        [
+          -90,
+          155
+        ],
+        [
+          -20,
+          155
+        ]
+      ]
+    }
+  ]
+}

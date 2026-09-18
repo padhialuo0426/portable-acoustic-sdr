@@ -135,7 +135,7 @@ set_param(mdl,'Toolchain','Automatically locate an installed toolchain');
 
 ### Q13. 模型能在哪些 MATLAB 版本上打开？
 
-**入库的 `.slx` 存的是 R2022a 格式**，R2022a 及以上都能直接打开（低→高安全）。
+**实验一至三入库的 `.slx` 存的是 R2022a 格式**，R2022a 及以上都能直接打开（低→高安全）。
 
 反过来，高版本存的模型**低版本一定打不开**，会报「模型是用 Simulink 的较新版本
 创建的」。所以**在 R2023a 及以上改完模型、要提交回仓库时，必须导出回 R2022a**：
@@ -144,12 +144,14 @@ set_param(mdl,'Toolchain','Automatically locate an installed toolchain');
 Simulink.exportToVersion('dpsk_receive','dpsk_receive.slx','R2022A');
 ```
 
-否则实验室的机器就打不开了。本轮修复后，三个模型均导出为 R2022a 文件格式，再用
+否则实验室的机器就打不开了。此前修复后，前三个模型均导出为 R2022a 文件格式，再用
 R2025b 重新打开、生成代码并验证。当前环境没有 R2022a，本轮未复测该版本的代码生成。
+
+实验四目前在 R2025b 构建和验证，尚未验证 R2022a 导出兼容性；请按[实验四说明](实验四_V22bis.md)使用。
 
 ### Q13b. R2022a 重新生成的代码能用吗？
 
-板级接口要求 **`RootIOFormat=Part of model data structure`**。仓库中的三个模型已保存
+板级接口要求 **`RootIOFormat=Part of model data structure`**。仓库中的四个模型已保存
 该值；使用旧模型或修改配置时，可显式设置：
 
 ```matlab
@@ -186,3 +188,18 @@ set_param(模型名,'RootIOFormat','Part of model data structure');
 3. 到这一步才去查采集参数（声道数、设备名、增益）。
 
 Q3 那个双声道 bug 就是这么定位出来的。
+
+
+## 五、实验四
+
+### Q14. 图片 BER=0，为什么星座图仍很乱？
+
+BER 只比较通过 FCS 的图片帧。整段录音还包含前导、捕获、静音和异常点，不能用整段散点图代表有效图片帧。实验四 GUI 默认显示“有效图片帧”，保留真实接收点；也可切换到“全部接收符号”检查过程。原点居中、I/Q 同尺度。详见[实验四说明](实验四_V22bis.md#pc-端-matlab-脚本)。
+
+### Q15. 实验四的自检和仿真脚本去哪里了？
+
+本机调试代码集中在 `exp4_v22bis/tests/`，不入库，也不是日常收发的依赖。本机保留这些脚本时，从实验根目录运行 `addpath('tests'); v22_run_tests`；模型单项验证用 `v22_model_check(2400, 'sim', 'ren512b.bmp')`。正常实验使用根目录的 `gui`、`v22_emit`、`v22_rev` 和 `v22_wav_decode`。不要递归添加 `tests/`，其中可能包含历史副本。
+
+### Q16. 能否再加接收滤波器？
+
+模型已在下变频后使用 129 抽头 RRC 匹配滤波。可按实际带外干扰增加带通，但带内混响、削顶或丢样不能仅靠带通解决。`v22_prepare_recording` 中另有用于定位突发的带通支路，它只检测能量，不替换送入解调器的波形。接收链见[实验四说明](实验四_V22bis.md#v22_receiveslx--接收处理链)。

@@ -10,6 +10,7 @@
 | [`实验一_单频信号.md`](实验一_单频信号.md) | 实验一逐目录文件说明 + 用法 |
 | [`实验二_DPSK.md`](实验二_DPSK.md) | 实验二逐目录文件说明 + 差分编码/成形/多图自适应 + 用法 |
 | [`实验三_chirp扩频.md`](实验三_chirp扩频.md) | 实验三逐目录文件说明 + 多速率/多图自适应 + 用法 |
+| [`实验四_V22bis.md`](实验四_V22bis.md) | 实验四逐目录文件说明 + HDLC 组帧/符号恢复/两档调制 + 用法 |
 | [`手把手部署运行教程.md`](手把手部署运行教程.md) | **从零到实测的分步操作**：传代码上板 → 编译 → 声学实测 → 取回解码 |
 | [`Q&A.md`](Q&A.md) | **常见问题与坑点**（声卡设备、跨板差异、编译、MATLAB 代码生成） |
 
@@ -28,24 +29,24 @@
 
 ## 整体架构：非对称「PC 发射 + 板端接收」
 
-三个实验都是同一种结构——**`.slx` 模型只是接收端**，发射是 PC 端 MATLAB 脚本：
+四个实验都是同一种结构——**`.slx` 模型只是接收端**，发射是 PC 端 MATLAB 脚本：
 
 ```mermaid
 flowchart LR
     emit["PC：*_emit.m<br/>生成波形 / sound() 播放"]
-    spk["PC：扬声器"]
-    mic["板上：麦克风"]
-    rx["开发板：接收端 C 程序<br/>ALSA 采集 → 模型 → 判决 → 写 .mat"]
-    dec["PC：解码/还原<br/>bok_rev.m / dpsk_rev.m / spectrum.m"]
+    spk["PC：音频输出"]
+    mic["板上：音频输入"]
+    rx["开发板：接收端 C 程序<br/>ALSA 采集 → 接收模型 → 写 .mat"]
+    dec["PC：解码/还原<br/>bok_rev.m / dpsk_rev.m / v22_rev.m / spectrum.m"]
 
-    emit --> spk -->|"空气(声学信道)"| mic --> rx
+    emit --> spk -->|"空气或有线链路"| mic --> rx
     rx -->|"用 scp/FileZilla 把 .mat 从 Linux 板子传回 PC"| dec
 ```
 
 - **发射端**（`*_emit.m`）：纯 PC MATLAB，用 `sound()` 经声卡播放。
   实验二/三的 `py/` 下另有一套**在板上跑的** Python 脚本（`*_emit.py`/`*_rev.py`），
   板子只要有 python3 就能脱离 MATLAB 把整个实验跑完。
-  三个实验各有一个可选的 `gui.m`，把「连接/枚举采集设备 + 同步源码上板并编译 +
+  四个实验各有一个可选的 `gui.m`，把「连接/枚举采集设备 + 同步源码上板并编译 +
   电平校准 + 启动采集/放音/取回/解码」串成四次点击（手动流程仍是教学正路，
   见 [Q&A](Q&A.md) Q9）。
 - **接收端**（板上 C）：Simulink 只负责生成**纯算法 C**，音频 I/O、
@@ -62,9 +63,10 @@ flowchart LR
 ├── common/              跨实验共享：板级底层(音频 I/O + MAT 写入) + matlab/(GUI 共用层)
 ├── exp1_single_freq/    实验一 · 单频信号测试
 ├── exp2_dpsk/           实验二 · DPSK 差分相移键控
-└── exp3_chirp/          实验三 · 线性调频(chirp)扩频通信
+├── exp3_chirp/          实验三 · 线性调频(chirp)扩频通信
+└── exp4_v22bis/         实验四 · V.22bis 风格 QPSK/16-QAM
 
-每个实验目录是扁平的，`.slx` 与各 `.m` 脚本都直接放在根下，子目录只有
+实验一至三的入口是扁平的，`.slx` 与各 `.m` 脚本都直接放在根下，子目录只有
 `src/`（手写 C）和 `py/`（板上脚本）这两类代码，外加存数据的 `sample_data/`
 与 `baseband_images/`（实验一只有 `src/`）：
 
@@ -79,9 +81,11 @@ flowchart LR
     └── baseband_images/     基带图片，MATLAB 与板上 py 都读它（实验一无此项）
 ```
 
+实验四根目录仅保留收发、GUI、建模入口和部署依赖；内部算法在 `private/`，模型源码与布局在 `model/`，全部测试代码和产物在 `tests/`。详见[实验四目录说明](实验四_V22bis.md#目录与文件逐一说明)。
+
 ## 共享底层 `common/`
 
-三个实验共用的板级运行时，全部手写 POSIX，零支持包依赖：
+四个实验共用的板级运行时，全部手写 POSIX，零支持包依赖：
 
 | 文件 | 作用 |
 |---|---|
@@ -89,18 +93,19 @@ flowchart LR
 | `src/audio_io_null.c` | 合成 1kHz 单音后端（无声卡机器联调，编译开关 `AUDIO=null`） |
 | `src/audio_io_file.c` | 原始 int16 文件输入后端（无噪声链路验证，`AUDIO=file`） |
 | `include/mat_sink.h`、`src/mat_sink.c` | MAT-v4 流式写入器，产出与 Simulink `To File` 同格式的 `.mat` |
-| `matlab/+asdr/` | 三个 `gui.m` 共用的界面骨架与板上连接层（`App` / `Board` / `ImageUI`），**跑在 PC 上，不上板** |
+| `matlab/+asdr/` | 四个 `gui.m` 共用的界面骨架与板上连接层（`App` / `Board` / `ImageUI`），**跑在 PC 上，不上板** |
 
 平台差异收敛到一个参数 `-d`；唯一耦合 Simulink 符号名的代码集中在各实验
 `src/model_glue.c`（重新生成模型后只需核对一处字段名）。
 
-## 三个实验对照
+## 四个实验对照
 
 | 实验 | 模型 | 功能 | 帧率 | 接收端可执行 |
 |---|---|---|---|---|
 | [实验一](实验一_单频信号.md) | `single_fre_rev.slx` | 声学单频接收/滤波/记录 | 100Hz 单速率 | `sdr_rx` |
 | [实验二](实验二_DPSK.md) | `dpsk_receive.slx` | DPSK 接收：滤波/码元同步/抽样判决 | 100Hz 单速率 | `dpsk_rx` |
 | [实验三](实验三_chirp扩频.md) | `chirp_rev_detect.slx` | LFM 扩频接收检测（多速率 + 15 个 Stateflow） | 10Hz 多速率 | `chirp_rx` |
+| [实验四](实验四_V22bis.md) | `v22_receive.slx` | 下变频、RRC、定时、AGC/静噪、载波恢复，电脑端 HDLC 解码 | 10Hz 单速率；每帧 60 符号 | `v22_rx` |
 
 ## 构建总览（两个独立开关 MODEL / AUDIO）
 
@@ -132,9 +137,10 @@ Fedora `sudo dnf install alsa-lib-devel`。交叉编译：`make CC=aarch64-linux
 只有当你要改算法时才需要在 MATLAB 里重新生成：配置 `ert.tlc` + `HardwareBoard=None`
 + `GenCodeOnly` + 关 MAT 日志 + `Toolchain` 设为自动定位，`slbuild` 直接覆盖
 `<模型名>_ert_rtw/`，再 `make` 即可。Device Type 已设为 `ARM Cortex-A (64-bit)`。
-入库的 `.slx` 存的是 **R2022a 格式**，R2022a 及以上都能打开；在更高版本改完模型
+实验一至三的 `.slx` 存的是 **R2022a 格式**，R2022a 及以上都能打开；在更高版本改完模型
 提交回来前要用 `Simulink.exportToVersion(..., 'R2022A')` 导出回去（见 [Q13](Q&A.md)）。
-三个模型已保存 `RootIOFormat=Part of model data structure`，以匹配 `model_glue.c`
+实验四当前模型在 **R2025b** 上构建和验证，尚未验证 R2022a 导出兼容性。
+四个模型已保存 `RootIOFormat=Part of model data structure`，以匹配 `model_glue.c`
 使用的根输入/输出结构体。改配置后应检查该值，避免生成不兼容的接口。
 **生成代码不需要宿主机装任何 C 编译器**（编译在板上做），MATLAB 提示找不到
 supported compiler 可以无视。详细步骤见各实验文档；踩坑见 [Q&A](Q&A.md)。

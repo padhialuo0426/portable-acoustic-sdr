@@ -6,6 +6,7 @@ function frames = v22_unpack(bits)
 %       .payload  uint8 行向量（已去 FCS）
 %       .ok       logical，FCS 是否通过
 %       .pos      该帧起始标志在 bits 中的下标
+%       .endPos   该帧结束标志最后一位的下标（含标志和位填充的原始位置）
 %
 %   与本工程前三个实验的关键差别：**不需要 m 序列做帧同步**。HDLC 的
 %   0x7E 标志加位填充本身就保证了帧边界唯一可判——数据段里永远出不来
@@ -18,7 +19,7 @@ function frames = v22_unpack(bits)
 
     bits  = bits(:).';
     flag  = [0 1 1 1 1 1 1 0];
-    frames = struct('payload',{},'ok',{},'pos',{});
+    frames = struct('payload',{},'ok',{},'pos',{},'endPos',{});
 
     % --- 找出所有标志位置 ---
     n = numel(bits);
@@ -74,6 +75,6 @@ function frames = v22_unpack(bits)
         got     = uint16(by(end-1)) + bitshift(uint16(by(end)), 8);  % FCS 低字节先
         frames(end+1) = struct('payload', payload, ...
                                'ok', got == v22_crc16(payload), ...
-                               'pos', loc(j)); %#ok<AGROW>
+                               'pos', loc(j), 'endPos', loc(j+1)+7); %#ok<AGROW>
     end
 end
