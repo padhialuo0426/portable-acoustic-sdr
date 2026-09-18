@@ -2,7 +2,7 @@ function build_model(modelFile)
 %BUILD_MODEL  可复现地构建实验四分块接收模型，并保存到本实验目录。
 % PCM 归一化 -> 下变频 -> RRC -> 定时 -> AGC/静噪 -> 载波恢复 -> I/Q 打包。
 % model/*.m 是 MATLAB Function 块的源文件；修改后重新运行本入口和 slbuild。
-% 2400/1200 共用一个模型，PC 按所选速率判决。输入/输出接口不变。
+% 2400/1200 共用一个模型；RxRate 输入选择增益目标和鉴相参考。
 % 可传入另一个 .slx 文件路径，在副本中验证重建而不覆盖当前模型。
     here=fileparts(mfilename('fullpath'));
     if nargin<1,modelFile=fullfile(here,'v22_receive.slx');end
@@ -29,6 +29,10 @@ function build_model(modelFile)
     add_block('simulink/Sources/In1',[mdl '/AudioIn'], ...
         'OutDataTypeStr','int16','PortDimensions',num2str(frameSymbols*P.sps), ...
         'SampleTime','0.1','Position',[25 148 55 162]);
+    add_block('simulink/Sources/In1',[mdl '/RxRate'], ...
+        'Port','2','OutDataTypeStr','uint16','PortDimensions','1', ...
+        'SampleTime','0.1','Position',[635 375 665 395], ...
+        'ShowName','off','AttributesFormatString','接收速率（1200／2400）');
     add_block('built-in/Subsystem',[mdl '/PCM Normalize'],'Position',[95 120 195 190]);
     buildNormalize([mdl '/PCM Normalize']);
     addFunction(mdl,'Downconvert','downconvert.m',{'fc','fs'},[235 120 345 190],here);
@@ -53,6 +57,9 @@ function build_model(modelFile)
     end
     line=add_line(mdl,'AGC and Squelch/2','Carrier Recovery/2','autorouting','on');
     set_param(line,'Name','载波有效／静噪复位');
+    % 根速率连线同样保持无名，生成 C 的字段名才能稳定为 RxRate。
+    add_line(mdl,'RxRate/1','AGC and Squelch/2','autorouting','on');
+    add_line(mdl,'RxRate/1','Carrier Recovery/3','autorouting','on');
     displayNames={'音频输入','PCM 归一化','正交下变频','RRC 匹配滤波', ...
         '定时恢复与抽样','AGC 与静噪','载波相位恢复','I/Q 交替打包','符号输出'};
     for k=1:numel(chain)
@@ -77,6 +84,8 @@ function build_model(modelFile)
         'Toolchain','Automatically locate an installed toolchain', ...
         'RootIOFormat','Part of model data structure','GenerateSampleERTMain','off');
     set_param(mdl,'SimulationCommand','update');
+    % 编译新增端口时 Simulink 可能微调块高度；保存前恢复用户布局。
+    applyLayout(mdl,fullfile(here,'model','layout.json'));
     save_system(mdl,modelFile);
     open_system(mdl);set_param(mdl,'ZoomFactor','FitSystem');
     fprintf('已生成分块模型 %s.slx：960 样本 -> 60 个复符号 -> 120 个 I/Q 值。\n',mdl);

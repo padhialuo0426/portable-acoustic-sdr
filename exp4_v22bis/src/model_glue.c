@@ -19,6 +19,7 @@ static double  mock_out[MODEL_OUT_LEN];
 void model_init(void) { memset(mock_in, 0, sizeof mock_in);
                         memset(mock_out, 0, sizeof mock_out); }
 void model_term(void) { }
+void model_set_rate(int rate) { (void)rate; }
 
 void model_step_frame(void)
 {
@@ -47,8 +48,9 @@ int           model_stop_requested(void) { return 0; }
 
 #include "v22_receive.h"
 
-void model_init(void) { v22_receive_initialize(); }
+void model_init(void) { v22_receive_initialize(); model_set_rate(2400); }
 void model_term(void) { v22_receive_terminate(); }
+void model_set_rate(int rate) { v22_receive_U.RxRate = (uint16_T)rate; }
 
 /* 单速率：一帧就是一次 step，没有实验三那种 step0/step1 的多速率封装 */
 void model_step_frame(void) { v22_receive_step(); }

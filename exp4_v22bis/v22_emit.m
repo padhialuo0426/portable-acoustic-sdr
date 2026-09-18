@@ -36,7 +36,7 @@ fprintf('发送 %s  %dx%d=%d 位  %dbps  载荷 %d 字节  帧 %d 比特\n', ...
 fprintf('信号 %.2fs（前导 %d 符号 + 数据 + 后导 %d 符号），总长 %.2fs\n', ...
         numel(x)/P.fs, P.preambleSyms, P.postambleSyms, numel(y)/P.fs);
 % 板上要先起采集再放音，采集窗口得盖过信号时长，这里直接把建议的 -t 算好
-fprintf('板上先执行: ./build/v22_rx -d plughw:X,0 -t %d\n', ceil(numel(y)/P.fs)+4);
+fprintf('板上先执行: ./build/v22_rx -b %d -d plughw:X,0 -t %d\n', RATE, ceil(numel(y)/P.fs)+4);
 
 if SAVE_RAW
     pcm = int16(round(0.9 * x * 32767));

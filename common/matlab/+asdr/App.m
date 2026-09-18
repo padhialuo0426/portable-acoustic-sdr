@@ -11,6 +11,7 @@ classdef App < handle
 %     fs         double    放音采样率
 %     prepare    @(app)    -> meta 结构体，至少含 meta.x(待放波形) 与
 %                             meta.dur(信号秒数)、meta.desc(日志里描述发什么)
+%                             可选 meta.receiverArgs 为接收程序的参数 cellstr
 %     analyze    @(app,matfile,meta)  解码/分析并渲染结果面板
 %     buildResults @(app,parentGrid)  建结果面板（BER+点阵 / 频谱）
 %
@@ -332,9 +333,13 @@ classdef App < handle
 
                 % 1) 板上启动采集（后台），旧数据先删掉避免看到上一次的结果
                 rm = strjoin([{app.spec.outMat}, app.spec.extraRemove], ' ');
-                app.board.startJob(sprintf('cd %s && rm -f %s && ./build/%s -d %s -t %d', ...
+                args = '';
+                if isfield(meta,'receiverArgs')
+                    args = strjoin(cellfun(@asdr.shellQuote,meta.receiverArgs,'UniformOutput',false),' ');
+                end
+                app.board.startJob(sprintf('cd %s && rm -f %s && ./build/%s -d %s -t %d %s', ...
                               app.remoteDir(), rm, app.spec.binary, ...
-                              asdr.shellQuote(app.alsaDev()), tcap));
+                              asdr.shellQuote(app.alsaDev()), tcap, args));
                 app.logStep('板上采集', '✓', '已启动');
                 pause(app.lead.Value);  app.checkCancelled();
 

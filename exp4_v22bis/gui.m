@@ -102,6 +102,7 @@ function meta = prepare(app, P)
     meta.dur     = numel(x) / Pm.fs;
     meta.desc    = sprintf('%s  %dx%d=%d 位  %d bps', name, MM, NN, NN*MM, Pm.rate);
     meta.P       = Pm;
+    meta.receiverArgs = {'-b',num2str(Pm.rate)};
     meta.payload = payload;
     meta.NN = NN;  meta.MM = MM;
     asdr.ImageUI.showBitmap(app.ui.axTx, v22_payload2img(payload), '本次发送点阵');
@@ -220,12 +221,13 @@ function drawConstellation(app)
         plot(ax,real(points),imag(points),'.','MarkerSize',5,'DisplayName','实收符号');
         extent = max([abs(real(points)), abs(imag(points))]);
         % 参考点只作对照，实收点保持原始幅度和相位，不做吸附或美化。
-        if d.rate == 2400
-            Pm = v22_params(2400);
+        if ismember(d.rate,[1200 2400])
+            Pm = v22_params(d.rate);
             ref = reshape(Pm.inQ(:) * [1 1i -1 -1i],1,[]);
             extent = max([extent, abs(real(ref)), abs(imag(ref))]);
             hold(ax,'on');
-            plot(ax,real(ref),imag(ref),'kx','MarkerSize',8,'DisplayName','16-QAM 参考');
+            if d.rate==1200,referenceLabel='QPSK 参考';else,referenceLabel='16-QAM 参考';end
+            plot(ax,real(ref),imag(ref),'kx','MarkerSize',8,'DisplayName',referenceLabel);
             hold(ax,'off'); legend(ax,'show','Location','best');
         end
         % 两轴同尺度且关于零对称，让坐标原点始终位于星座图中央。

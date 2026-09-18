@@ -36,6 +36,8 @@ extern "C" {
 
 void model_init(void);
 void model_term(void);
+/* 初始化后、第一帧之前设置接收速率：1200(QPSK) 或 2400(16-QAM)。 */
+void model_set_rate(int rate);
 
 /* 跑一帧：单速率，一次 step 就是一帧 */
 void model_step_frame(void);

@@ -30,7 +30,8 @@ static void usage(const char *prog)
         "用法: %s [选项]\n"
         "  -d <设备>   ALSA 采集设备 (默认 \"default\"；用 arecord -l 查)\n"
         "  -t <秒>     采集指定秒数后自动停止；不给则跑到 Ctrl-C\n"
-        "  -c <声道>   采集声道数 1=单声道(默认,最稳) 2=立体声取左声道\n"
+        "  -c <声道>   采集声道数 1=单声道(默认,最稳) 2=立体声取均值\n"
+        "  -b <速率>   1200=QPSK，2400=16-QAM（默认）；须与发送端一致\n"
         "  -r <文件>   额外把原始麦克风信号存为 .mat (变量 rawAudio)\n"
         "  -h          显示帮助\n"
         "输出: v22sym.mat (变量 v22Sym, 121×N: 第1行时间, 其余 120 行为\n"
@@ -46,14 +47,22 @@ int main(int argc, char **argv)
     const char *raw_path = NULL;
     double dur_sec = 0.0;
     int cap_ch = 1;
+    int rate = 2400;
     int opt;
 
-    while ((opt = getopt(argc, argv, "d:t:c:r:h")) != -1) {
+    while ((opt = getopt(argc, argv, "d:t:c:r:b:h")) != -1) {
         switch (opt) {
         case 'd': cap_dev  = optarg;       break;
         case 't': dur_sec  = atof(optarg); break;
         case 'c': cap_ch   = atoi(optarg); break;
         case 'r': raw_path = optarg;       break;
+        case 'b':
+            if (strcmp(optarg, "1200") && strcmp(optarg, "2400")) {
+                fprintf(stderr, "错误：-b 只能是 1200 或 2400\n");
+                return 1;
+            }
+            rate = atoi(optarg);
+            break;
         case 'h': usage(argv[0]); return 0;
         default:  usage(argv[0]); return 1;
         }
@@ -91,6 +100,8 @@ int main(int argc, char **argv)
     }
     int result = 0;
     model_init();
+    model_set_rate(rate);
+    fprintf(stderr, "接收模式: %d bps (%s)\n", rate, rate == 1200 ? "QPSK" : "16-QAM");
     if (max_frames)
         fprintf(stderr, "运行中：采集=%s %dHz 帧长%d 帧率%dHz  采集 %.1f 秒后停止\n",
                 cap_dev, MODEL_SAMPLE_RATE_HZ, MODEL_FRAME_SAMPLES,

@@ -22,9 +22,9 @@
       "path": "v22_receive/Carrier Recovery",
       "position": [
         1025,
-        116,
+        118,
         1135,
-        189
+        192
       ]
     },
     {
@@ -79,6 +79,15 @@
         148,
         1535,
         162
+      ]
+    },
+    {
+      "path": "v22_receive/RxRate",
+      "position": [
+        635,
+        375,
+        665,
+        395
       ]
     }
   ],
