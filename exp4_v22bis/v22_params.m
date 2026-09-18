@@ -37,6 +37,11 @@ function P = v22_params(rate)
     P.scrTaps = [14 17];
     P.scrLen  = 17;
 
+    % 实验测量外层：两段 m 序列夹住 HDLC 帧，不改变其位填充或 FCS。
+    P.syncBits = v22_msequence();
+    P.syncGuard = 17;            % 数据与标记之间留足解扰记忆长度
+    P.syncMaxErrors = 25;        % 每段 127 位最多 25 位错，且首尾间距必须匹配
+
     % 前导：送入扰码器的全 1，出来是伪随机序列，供 AGC/定时/载波捕获。
     % 300 符号是仿真里二阶载波环稳定捕获所需长度的 1.5 倍余量。
     P.preambleSyms = 300;

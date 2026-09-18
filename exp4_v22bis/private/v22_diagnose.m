@@ -1,9 +1,20 @@
-function report = v22_diagnose(bits, referencePayload)
-%V22_DIAGNOSE  区分解帧失败阶段，并在边界明确时比较校验前图片比特。
+function report = v22_diagnose(bits, referencePayload, P)
+%V22_DIAGNOSE  独立报告 m 序列实验 BER 与 HDLC/FCS 接收完整性。
 % 参考载荷只用于诊断与 BER；不修复帧、不放宽 FCS，也不选择最像参考的帧。
-    [frames, detail] = v22_unpack(bits);
+    if nargin < 3, P = v22_params(double(referencePayload(2))*600); end
+    measurement = v22_measure(bits,referencePayload,P);
+    if measurement.available
+        offset = measurement.range(1)-1;
+        [frames, detail] = v22_unpack(bits(measurement.range(1):measurement.range(2)));
+        for k = 1:numel(frames)
+            frames(k).pos = frames(k).pos + offset;
+            frames(k).endPos = frames(k).endPos + offset;
+        end
+    else
+        [frames, detail] = v22_unpack(bits);
+    end
     report = struct('hdlc',detail,'status','','message','', ...
-        'image',[],'frameRange',[],'invalidImages',0, ...
+        'image',[],'frameRange',[],'invalidImages',0,'measurement',measurement, ...
         'diagnostic',struct('available',false,'reason','','errors',NaN, ...
                             'bits',0,'ber',NaN,'frameIndex',[]));
 

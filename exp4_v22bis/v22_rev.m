@@ -3,14 +3,14 @@
 %  板上 v22_rx 每帧吐 60 个复符号（I,Q 交替），本脚本接着做：
 %    判决 -> 差分解码 -> 自同步解扰 -> HDLC 找帧/去位填充/校验 FCS -> 还原图片
 %
-%  与实验二/三的解码脚本对照：那两个要靠 img_name 算出帧头帧尾该相距多远
-%  （gap = L+15），图片选错就报「未找到 m 序列」；本实验不需要——帧长写在
-%  帧里，HDLC 标志自带边界。这里读 img_name 只为算 BER 和并排显示原图。
+%  HDLC/FCS 独立判断接收帧是否完整。首尾 m 序列另外定位实验测量窗口，
+%  结合本次发送图片的尺寸及位填充位置，允许坏帧统计图片 BER。
+%  因此 img_name 必须与发送端一致；实验对照图不等同于 FCS 有效图片。
 
 %% 路径与参数 %%
 here = fileparts(mfilename('fullpath'));  if isempty(here), here = pwd; end
 imgdir   = fullfile(here, 'baseband_images');
-img_name = 'ren512b.bmp';     % ← 仅用于算 BER / 对照显示，解码本身不依赖它
+img_name = 'ren512b.bmp';     % ← 与发送端一致，提供实验 BER 的位置与图片参考
 RATE     = 2400;              % ← 与发送端一致
 
 P = v22_params(RATE);
@@ -36,36 +36,36 @@ end
 %% 判决 + 差分解码 + 自同步解扰 %%
 bits = v22_symbols_to_bits(sym, P);
 
-%% HDLC 解帧 %%
-frames = v22_unpack(bits);
-good   = frames([frames.ok]);
-fprintf('候选帧 %d 个，FCS 通过 %d 个\n', numel(frames), numel(good));
-if isempty(good)
-    error(['没有 FCS 通过的帧。可能原因：信号太弱或过载、采集时长不够、' ...
-           '速率档位与发送端不一致（当前按 %d bps 解）。'], RATE);
+%% 独立的实验 BER 与 HDLC/FCS 检查 %%
+reference = v22_img2payload(imgdir,img_name,P.bps);
+report = v22_diagnose(bits,reference,P);
+fprintf('%s\n',report.message);
+m = report.measurement;
+BER = NaN;
+if m.available
+    BER = m.ber;
+    fprintf('m 序列定位成功，首/尾相关 %.3f / %.3f\n',m.scores);
+    fprintf('实验图片 BER = %d/%d = %.6f\n',m.errors,m.bits,m.ber);
+else
+    fprintf('实验 BER 无法计算：%s\n',m.reason);
 end
-
-%% 还原图片 %%
-img = [];
-for g = 1:numel(good)
-    try
-        img = v22_payload2img(good(g).payload);  break
-    catch
+img = report.image;
+if ~m.available && ~isempty(img)
+    imRef = v22_payload2img(reference);
+    if isequal(size(img),size(imRef))
+        BER = sum(img(:) ~= imRef(:))/numel(img);
+        fprintf('有效帧 BER = %.6f（仅比较 FCS 通过的图片）\n',BER);
     end
 end
-if isempty(img), error('帧解出来了但载荷不是图片格式。'); end
-[NN, MM] = size(img);
-
-imRef = imread(fullfile(imgdir, img_name));
-if isequal(size(imRef), size(img))
-    BER = sum(img(:) ~= double(imRef(:))) / numel(img)      %#ok<NOPTS>
-else
-    fprintf('注意：还原图片 %dx%d 与 %s 尺寸不同，跳过 BER\n', MM, NN, img_name);
+label = '接收还原（FCS 通过）';
+if isempty(img) && m.available
+    img = m.image;
+    label = '实验对照还原（未获得有效图片帧）';
 end
-
-figure;
-imshow(logical(img));
-title(sprintf('接收还原图片 (%dx%d, %dbps)', MM, NN, RATE));
+if ~isempty(img)
+    figure; imshow(logical(img));
+    title(sprintf('%s (%dbps)',label,RATE));
+end
 
 %% 星座图——16-QAM 出问题时这是最直接的诊断手段 %%
 act = sym(abs(sym) > 0.1*max(abs(sym)));       % 去掉静噪段

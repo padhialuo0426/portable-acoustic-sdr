@@ -7,7 +7,7 @@ function [x, sym] = v22_mod(bits, P)
 %     x     实通带波形（已归一化到 ±1），可直接喂 sound(x, P.fs)
 %     sym   调制符号（复基带），供仿真算 EVM 用
 %
-%   链路：加前导 -> 自同步扰码 -> 差分四象限映射 -> RRC 成形 -> 上变频取实部
+%   链路：前导/首尾 m 序列/后导 -> 自同步扰码 -> 差分映射 -> RRC -> 上变频
 %
 %   前导是「送进扰码器的全 1」——V.22bis 就是这么做的。全 1 经自同步扰码
 %   器出来是伪随机序列，频谱平坦、无直流，正好供接收端做 AGC、定时捕获和
@@ -18,6 +18,10 @@ function [x, sym] = v22_mod(bits, P)
     % --- 前导 + 数据 + 后导，一起过扰码器 ---
     pre  = ones(1, P.preambleSyms * P.bps);
     post = ones(1, P.postambleSyms * P.bps);
+    if isfield(P,'syncBits')
+        guard = ones(1,P.syncGuard);
+        bits = [P.syncBits, guard, bits, guard, P.syncBits];
+    end
     src  = [pre, bits, post];
 
     % 末尾补零凑整符号

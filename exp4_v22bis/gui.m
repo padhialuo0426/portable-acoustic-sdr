@@ -59,10 +59,10 @@ function buildResults(app, panel)
     g.ColumnWidth = {'1x','1.5x'};
     app.ui.berTxt = uilabel(g,'Text','BER: —','FontSize',16,'FontWeight','bold');
     app.ui.berTxt.Layout.Row = 1; app.ui.berTxt.Layout.Column = [1 2];
-    app.ui.berTxt.Tooltip = '仅比较通过 FCS 的还原图片与本次参考图片。';
-    app.ui.diagnosticTxt = uilabel(g,'Text','校验前图片 BER: —');
+    app.ui.berTxt.Tooltip = '首尾 m 序列唯一定位后，按发送端位填充位置比较图片比特；FCS 单独检查。';
+    app.ui.diagnosticTxt = uilabel(g,'Text','m 序列定位: —');
     app.ui.diagnosticTxt.Layout.Row = 2; app.ui.diagnosticTxt.Layout.Column = [1 2];
-    app.ui.diagnosticTxt.Tooltip = '仅诊断：完整边界、合法去填充、图片头和长度匹配且候选唯一时比较图片比特；不含帧头、FCS、填充位和前后导。';
+    app.ui.diagnosticTxt.Tooltip = '两段 127 位 m 序列的相关强度和间距必须同时满足要求；参考图片决定测量长度与位填充位置。';
     app.ui.statusTxt = uilabel(g,'Text','接收状态: —');
     app.ui.statusTxt.Layout.Row = 3; app.ui.statusTxt.Layout.Column = [1 2];
     sg = uigridlayout(g,[1 2]);
@@ -81,8 +81,8 @@ function buildResults(app, panel)
     cg = uigridlayout(g,[2 1]); cg.RowHeight = {28,'1x'};
     cg.Layout.Row = [5 6]; cg.Layout.Column = 2;
     app.ui.constellationScope = uidropdown(cg, ...
-        'Items',{'有效图片帧','全部接收符号'}, 'Value','有效图片帧', ...
-        'Tooltip','有效图片帧仅显示本次通过 FCS 的图片帧；全部符号包含静音与捕获过程。', ...
+        'Items',{'m序列测量窗口','有效图片帧','全部接收符号'}, 'Value','m序列测量窗口', ...
+        'Tooltip','测量窗口显示 m 序列间的实收帧符号；有效图片帧另要求 FCS 通过；全部符号包含静音与捕获过程。', ...
         'ValueChangedFcn',@(~,~) drawConstellation(app));
     app.track(app.ui.constellationScope);
     app.ui.axC = uiaxes(cg);
@@ -139,8 +139,9 @@ function [txt, dur] = durationText(app, P)
     Pm = v22_params(pickRate(app));
     [payload, NN, MM] = v22_img2payload(P.imgdir, app.ui.img.Value, Pm.bps);
     nbit = numel(v22_pack(payload));                % 含标志与位填充，精确值
+    nbit = nbit + 2*(numel(Pm.syncBits)+Pm.syncGuard);
     nsym = Pm.preambleSyms + ceil(nbit/Pm.bps) + Pm.postambleSyms;
-    dur  = (nsym*Pm.sps + Pm.span*Pm.sps) / Pm.fs;  % 加成形滤波拖尾
+    dur  = ((nsym-1)*Pm.sps + Pm.span*Pm.sps + 1) / Pm.fs;  % upfirdn 完整长度
     txt  = sprintf('%.2f s（%d 符号 / %d 位 / %d 字节载荷）', ...
                    dur, nsym, NN*MM, numel(payload));
 end
@@ -167,7 +168,7 @@ end
 % 解码：读 v22sym.mat -> 判决/差分/解扰 -> HDLC -> BER + 点阵 + 星座
 function analyze(app, matfile, meta, ~)
     resetResults(app);
-    app.ui.berTxt.Text = 'BER: 未解出帧';
+    app.ui.berTxt.Text = '实验 BER: 无法定位';
     app.ui.berTxt.FontColor = [0.8 0 0];
     Pm = meta.P;
     imRef = v22_payload2img(meta.payload);
@@ -208,13 +209,13 @@ function analyze(app, matfile, meta, ~)
     drawConstellation(app);
     if ~app.deadStreamOK(all(sym == 0))
         app.ui.statusTxt.Text = '接收状态: 全零符号，未检测到可用接收数据';
-        app.ui.diagnosticTxt.Text = '校验前图片 BER: 无法计算（全零符号）';
+        app.ui.diagnosticTxt.Text = 'm 序列定位: 无可用符号';
         recordCapture(app,meta,false);
         return
     end
 
     bits = v22_symbols_to_bits(sym, Pm);
-    report = v22_diagnose(bits,meta.payload);
+    report = v22_diagnose(bits,meta.payload,Pm);
     app.ui.lastReport = report;
     d = report.hdlc;
     app.ui.statusTxt.Text = ['接收状态: ' report.message];
@@ -227,15 +228,25 @@ function analyze(app, matfile, meta, ~)
     app.logStep('HDLC',mark,'候选帧 %d 个，FCS 通过 %d 个，失败 %d 个', ...
         d.candidateCount,d.fcsPassed,d.fcsFailed);
     app.logStep('图片格式','·','FCS 通过但图片无效 %d 个',report.invalidImages);
-    diag = report.diagnostic;
-    if diag.available
-        app.ui.diagnosticTxt.Text = sprintf('校验前图片 BER: %d/%d = %.4f（仅诊断）', ...
-            diag.errors,diag.bits,diag.ber);
-        app.logStep('校验前图片 BER','·','%d/%d = %.6f，仅诊断，不放宽 FCS', ...
-            diag.errors,diag.bits,diag.ber);
+    measurement = report.measurement;
+    if measurement.available
+        app.ui.berTxt.Text = sprintf('实验 BER = %d/%d = %.6f', ...
+            measurement.errors,measurement.bits,measurement.ber);
+        if measurement.errors == 0
+            app.ui.berTxt.FontColor = [0 0.5 0];
+        else
+            app.ui.berTxt.FontColor = [0.7 0.35 0];
+        end
+        app.ui.diagnosticTxt.Text = sprintf('m 序列定位: 成功，首/尾相关 %.3f / %.3f',measurement.scores);
+        first = floor((measurement.range(1)-1)/Pm.bps)+1;
+        last = ceil(measurement.range(2)/Pm.bps);
+        app.ui.constellation.measurement = sym(first:last);
+        app.logStep('实验 BER','·','%d/%d = %.6f；首尾 m 序列相关 %.3f / %.3f', ...
+            measurement.errors,measurement.bits,measurement.ber,measurement.scores);
+        app.logf('  按本次参考图片的位填充位置测量；独立于 HDLC/FCS，不修复接收比特。');
     else
-        app.ui.diagnosticTxt.Text = '校验前图片 BER: 无法可靠对齐（详见日志）';
-        app.logStep('校验前图片 BER','—','无法计算：%s',diag.reason);
+        app.ui.diagnosticTxt.Text = ['m 序列定位: ' measurement.reason];
+        app.logStep('实验 BER','—','无法计算：%s',measurement.reason);
     end
 
     img = report.image;
@@ -252,32 +263,26 @@ function analyze(app, matfile, meta, ~)
     drawConstellation(app);
 
     if isempty(img)
-        app.ui.berTxt.Text = 'BER: 未解出帧';
-        app.ui.berTxt.FontColor = [0.8 0 0];
-        app.logStep('解码', '✗', '%s',report.message);
-        app.logf('  可将星座范围切换为「全部接收符号」检查捕获过程；其中也包含静音和噪声。');
+        if measurement.available
+            app.ui.berTxt.FontColor = [0.7 0.35 0];
+            label = '实验对照还原（FCS 未通过）';
+            if report.hdlc.fcsPassed > 0, label = '实验对照还原（图片格式无效）'; end
+            asdr.ImageUI.showBitmap(app.ui.axRx,measurement.image,label);
+        end
+        app.logStep('解码','✗','%s',report.message);
         return
     end
 
-    if isequal(size(img), size(imRef))
+    if ~measurement.available && isequal(size(img),size(imRef))
+        % 兼容没有 m 序列的历史发送数据；此值只覆盖 FCS 通过的图片。
         nbad = sum(img(:) ~= imRef(:));
-        L = numel(img);
-        app.ui.berTxt.Text = sprintf('BER = %d/%d = %.4f', nbad, L, nbad/L);
-        if nbad == 0
-            app.ui.berTxt.FontColor = [0 0.5 0];
-            app.logStep('BER', '✓', '0/%d，实验四通过', L);
-        else
-            app.ui.berTxt.FontColor = [0.8 0 0];
-            app.logStep('BER', '△', '%.4f 有误码，检查电平/环境噪声', nbad/L);
-        end
-    else
-        app.ui.berTxt.Text = 'BER: 图片尺寸不同，无法比较';
-        app.ui.berTxt.FontColor = [0.7 0.4 0];
-        app.logStep('BER', '△', '收到 %dx%d，本次参考 %dx%d，跳过误码率比较', ...
-                    size(img,2),size(img,1),size(imRef,2),size(imRef,1));
+        app.ui.berTxt.Text = sprintf('有效帧 BER = %d/%d = %.6f',nbad,numel(img),nbad/numel(img));
+        app.ui.berTxt.FontColor = [0 0.5 0];
+        if nbad > 0, app.ui.berTxt.FontColor = [0.7 0.35 0]; end
     end
+    app.logStep('解码','✓','FCS 通过，已还原有效图片帧');
+    asdr.ImageUI.showBitmap(app.ui.axRx,img,'接收还原（FCS 通过）');
 
-    asdr.ImageUI.showBitmap(app.ui.axRx, img,   '接收还原');
 end
 
 function resetResults(app)
@@ -285,11 +290,11 @@ function resetResults(app)
     cla(app.ui.axRx); axis(app.ui.axRx,'off'); title(app.ui.axRx,'接收还原（等待本次结果）');
     app.ui.berTxt.Text = 'BER: —';
     app.ui.berTxt.FontColor = [0 0 0];
-    app.ui.diagnosticTxt.Text = '校验前图片 BER: —';
+    app.ui.diagnosticTxt.Text = 'm 序列定位: —';
     app.ui.statusTxt.Text = '接收状态: —';
     app.ui.statusTxt.Tooltip = '';
     app.ui.lastReport = [];
-    app.ui.constellation = struct('all',[],'frame',[],'range',[],'rate',[]);
+    app.ui.constellation = struct('all',[],'frame',[],'measurement',[],'range',[],'rate',[]);
     drawConstellation(app);
 end
 
@@ -297,7 +302,10 @@ function drawConstellation(app)
     ax = app.ui.axC;
     cla(ax); legend(ax,'off'); hold(ax,'off');
     d = app.ui.constellation;
-    if strcmp(app.ui.constellationScope.Value,'有效图片帧')
+    if strcmp(app.ui.constellationScope.Value,'m序列测量窗口')
+        points = d.measurement; label = 'm 序列测量窗口星座';
+        emptyText = '暂无可靠的 m 序列测量窗口';
+    elseif strcmp(app.ui.constellationScope.Value,'有效图片帧')
         points = d.frame; label = '有效图片帧星座';
         emptyText = '暂无有效图片帧';
     else

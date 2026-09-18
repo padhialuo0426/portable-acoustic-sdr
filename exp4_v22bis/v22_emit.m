@@ -1,11 +1,10 @@
 %% 实验四 · 发射端：把一张 1-bit 图片用 V.22bis 发出去
 %
-%  链路：图片 -> HDLC 帧(含 CRC-16) -> 加扰 -> 差分四象限 -> RRC 成形
+%  链路：图片 -> HDLC 帧(含 CRC-16) -> 首尾 m 序列 -> 加扰 -> 差分四象限 -> RRC 成形
 %        -> 1200Hz 载波 -> sound() 经扬声器播放
 %
-%  与实验二/三的发射脚本对照：那两个把图片直接当基带比特流发，靠两段 m
-%  序列找帧头帧尾，解码端必须预先知道图片多大；本实验走真正的数据链路
-%  协议——帧长写在帧里，HDLC 标志自带边界，解码端不需要知道图片尺寸。
+%  HDLC 标志和 FCS 用于完整接收；首尾 127 位 m 序列是本实验的测量扩展，
+%  用于独立定位 BER 窗口。坏帧测量要求解码端选择相同图片作为位置参考。
 
 % clc
 % clear
@@ -33,7 +32,7 @@ y = [zeros(1, round(LEAD*P.fs)), x, zeros(1, round(0.3*P.fs))];
 %% 产生声音 %%
 fprintf('发送 %s  %dx%d=%d 位  %dbps  载荷 %d 字节  帧 %d 比特\n', ...
         img_name, MM, NN, NN*MM, RATE, numel(payload), numel(frameBits));
-fprintf('信号 %.2fs（前导 %d 符号 + 数据 + 后导 %d 符号），总长 %.2fs\n', ...
+fprintf('信号 %.2fs（前导 %d 符号 + m 序列与数据 + 后导 %d 符号），总长 %.2fs\n', ...
         numel(x)/P.fs, P.preambleSyms, P.postambleSyms, numel(y)/P.fs);
 % 板上要先起采集再放音，采集窗口得盖过信号时长，这里直接把建议的 -t 算好
 fprintf('板上先执行: ./build/v22_rx -b %d -d plughw:X,0 -t %d\n', RATE, ceil(numel(y)/P.fs)+4);
