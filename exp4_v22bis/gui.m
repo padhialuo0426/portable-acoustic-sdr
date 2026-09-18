@@ -53,8 +53,8 @@ end
 function buildResults(app, panel)
     % 为诊断行留出空间，发送与接收点阵仍上下排列。
     app.fig.Position(3:4) = max(app.fig.Position(3:4),[1120 800]);
-    g = uigridlayout(panel, [6 2]);
-    g.RowHeight = {28,22,22,28,'1x','1x'};
+    g = uigridlayout(panel, [5 2]);
+    g.RowHeight = {28,22,22,'1x','1x'};
     g.RowSpacing = 4;
     g.ColumnWidth = {'1x','1.5x'};
     app.ui.berTxt = uilabel(g,'Text','BER: —','FontSize',16,'FontWeight','bold');
@@ -65,21 +65,12 @@ function buildResults(app, panel)
     app.ui.diagnosticTxt.Tooltip = '两段 127 位 m 序列的相关强度和间距必须同时满足要求；参考图片决定测量长度与位填充位置。';
     app.ui.statusTxt = uilabel(g,'Text','接收状态: —');
     app.ui.statusTxt.Layout.Row = 3; app.ui.statusTxt.Layout.Column = [1 2];
-    sg = uigridlayout(g,[1 2]);
-    sg.Layout.Row = 4; sg.Layout.Column = [1 2];
-    sg.Padding = [0 0 0 0]; sg.ColumnWidth = {'1x',80};
-    app.ui.statsTxt = uilabel(sg);
-    app.ui.statsTxt.Tooltip = '本窗口按速率累计：仅计已取回且数据格式有效的实采；FCS 通过并可还原图片算成功。仅解码、取消、连接或文件异常不计数。';
-    app.ui.resetStats = uibutton(sg,'Text','清零统计', ...
-        'ButtonPushedFcn',@(~,~) resetStats(app));
-    app.track(app.ui.resetStats);
-    resetStats(app);
     app.ui.axTx = uiaxes(g);  title(app.ui.axTx,'发送点阵');  axis(app.ui.axTx,'off');
-    app.ui.axTx.Layout.Row = 5; app.ui.axTx.Layout.Column = 1;
+    app.ui.axTx.Layout.Row = 4; app.ui.axTx.Layout.Column = 1;
     app.ui.axRx = uiaxes(g);  title(app.ui.axRx,'接收还原');  axis(app.ui.axRx,'off');
-    app.ui.axRx.Layout.Row = 6; app.ui.axRx.Layout.Column = 1;
+    app.ui.axRx.Layout.Row = 5; app.ui.axRx.Layout.Column = 1;
     cg = uigridlayout(g,[2 1]); cg.RowHeight = {28,'1x'};
-    cg.Layout.Row = [5 6]; cg.Layout.Column = 2;
+    cg.Layout.Row = [4 5]; cg.Layout.Column = 2;
     app.ui.constellationScope = uidropdown(cg, ...
         'Items',{'m序列测量窗口','有效图片帧','全部接收符号'}, 'Value','m序列测量窗口', ...
         'Tooltip','测量窗口显示 m 序列间的实收帧符号；有效图片帧另要求 FCS 通过；全部符号包含静音与捕获过程。', ...
@@ -96,39 +87,6 @@ end
 function rateChanged(app)
     app.refreshTiming();
     resetResults(app);
-    refreshStats(app);
-end
-
-function resetStats(app)
-    app.ui.captureStats = struct('rate',{1200,2400},'total',{0,0}, ...
-                                'passed',{0,0},'ids',{{},{}});
-    refreshStats(app);
-end
-
-function refreshStats(app)
-    s = app.ui.captureStats([app.ui.captureStats.rate] == pickRate(app));
-    if s.total == 0
-        value = sprintf('%d bps：实采 0 次，成功率 —，帧错误率 —',s.rate);
-    else
-        value = sprintf('%d bps：成功 %d/%d (%.1f%%)，帧错误率 %.1f%%', ...
-            s.rate,s.passed,s.total,100*s.passed/s.total,100*(s.total-s.passed)/s.total);
-    end
-    app.ui.statsTxt.Text = value;
-end
-
-function recordCapture(app, meta, passed)
-    % 仅实采回调有唯一标识；校准和重复解码不会把同一份数据计为新发送。
-    if ~isfield(meta,'captureId'), return, end
-    k = find([app.ui.captureStats.rate] == meta.P.rate,1);
-    s = app.ui.captureStats(k);
-    if any(strcmp(s.ids,meta.captureId)), return, end
-    s.ids{end+1} = meta.captureId;
-    s.total = s.total + 1;
-    s.passed = s.passed + double(passed);
-    app.ui.captureStats(k) = s;
-    refreshStats(app);
-    app.logStep('累计实采','·','%d bps：有效图片帧 %d/%d，失败 %d', ...
-        s.rate,s.passed,s.total,s.total-s.passed);
 end
 
 %% ------------------------- V.22bis 特有部分 -------------------------
@@ -174,25 +132,25 @@ function analyze(app, matfile, meta, ~)
     imRef = v22_payload2img(meta.payload);
     asdr.ImageUI.showBitmap(app.ui.axTx, imRef, '本次发送点阵');
     if ~isfile(matfile)
-        app.ui.statusTxt.Text = '接收状态: 本地数据文件不存在（不计入实采统计）';
+        app.ui.statusTxt.Text = '接收状态: 本地数据文件不存在';
         app.logStep('解码', '✗', '本地没有 %s，先做一次实测', app.spec.outMat); return
     end
     try
         S = load(matfile);
     catch e
-        app.ui.statusTxt.Text = '接收状态: 无法读取数据文件（不计入实采统计）';
+        app.ui.statusTxt.Text = '接收状态: 无法读取数据文件';
         app.logStep('数据检查','✗','%s',asdr.firstLine(e.message));
         return
     end
     if ~isfield(S,'v22Sym')
-        app.ui.statusTxt.Text = '接收状态: 文件缺少 v22Sym（不计入实采统计）';
+        app.ui.statusTxt.Text = '接收状态: 文件缺少 v22Sym';
         app.logStep('解码', '✗', '文件里没有 v22Sym 变量'); return
     end
     D = S.v22Sym;
     try
         validateattributes(D, {'numeric'}, {'2d','nrows',121,'nonempty','real','finite'});
     catch e
-        app.ui.statusTxt.Text = '接收状态: 符号数据格式无效（不计入实采统计）';
+        app.ui.statusTxt.Text = '接收状态: 符号数据格式无效';
         app.logStep('数据检查','✗','%s',asdr.firstLine(e.message));
         return
     end
@@ -210,7 +168,6 @@ function analyze(app, matfile, meta, ~)
     if ~app.deadStreamOK(all(sym == 0))
         app.ui.statusTxt.Text = '接收状态: 全零符号，未检测到可用接收数据';
         app.ui.diagnosticTxt.Text = 'm 序列定位: 无可用符号';
-        recordCapture(app,meta,false);
         return
     end
 
@@ -250,7 +207,6 @@ function analyze(app, matfile, meta, ~)
     end
 
     img = report.image;
-    recordCapture(app,meta,~isempty(img));
     if ~isempty(img)
         % 解扰不改变比特数。用接收帧的真实边界映射回原始复符号，
         % 包括 HDLC 标志和位填充；不按理想星座判决值重画。
