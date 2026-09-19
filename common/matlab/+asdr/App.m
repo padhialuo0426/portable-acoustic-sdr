@@ -477,10 +477,8 @@ classdef App < handle
         end
 
         % ---- 把板上需要的东西送过去 ----
-        % 用 MATLAB 自带的 tar 打包，不依赖宿主机有 find/tar（教程第 2 节那条管线
-        % 在 Windows 上要 Git Bash 才有）。按扩展名白名单挑：.c/.h/Makefile 是
-        % 编译要的，py/ 与 baseband_images/ 是板上那套免 MATLAB 脚本要的。
-        % 实验目录下的 .m 和 .slx 只在 PC 上用，不在白名单里，自然不上板。
+        % 用 MATLAB 自带的 tar 打包，不依赖宿主机有 find/tar。
+        % 只上传编译接收程序所需的 .c/.h/Makefile；图片、.m 和 .slx 留在 PC。
         function ok = deployFiles(app)
             ok = false;
             [repoRoot, expName] = fileparts(app.here);
@@ -489,12 +487,10 @@ classdef App < handle
                      fullfile(expName,'Makefile'), ...
                      fullfile(expName,'src','*.c'), ...
                      fullfile(expName,'src','*.h'), ...
-                     fullfile(expName,'py','*.py'), ...
                      fullfile(expName,'*_ert_rtw','*.c'), ...
                      fullfile(expName,'*_ert_rtw','*.h'), ...
                      fullfile(expName,'slprj','ert','_sharedutils','*.c'), ...
-                     fullfile(expName,'slprj','ert','_sharedutils','*.h'), ...
-                     fullfile(expName,'baseband_images','*.bmp') };
+                     fullfile(expName,'slprj','ert','_sharedutils','*.h') };
             rel = {};
             for i = 1:numel(pats)
                 L = dir(fullfile(repoRoot, pats{i}));
@@ -520,7 +516,7 @@ classdef App < handle
             if st ~= 0, app.logStep('同步源码', '✗', '上传失败：%s', asdr.firstLine(out)); return, end
             % 先删掉板上旧的 *_ert_rtw：tar 解包只覆盖/新增、不删除，若这次重新
             % 生成让某个 .c 改了名或消失，残留的"孤儿 .c"会被 Makefile 的 *.c 通配
-            % 编进去而报错（教程 7.1 提醒过的坑）。生成代码独占 *_ert_rtw 目录，
+            % 编进去而报错（见《构建与部署》的“重新部署”说明）。生成代码独占 *_ert_rtw 目录，
             % 可以整个删掉重来（用 find 按名字删，不必关心模型叫什么）；
             % 手写的 src/*.c 不会改名，不动。
             %

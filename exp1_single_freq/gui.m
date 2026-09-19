@@ -3,7 +3,7 @@ function gui()
 %
 %   用法：cd 到本文件所在目录(exp1_single_freq/)后直接运行 gui
 %
-%   把「手把手部署运行教程」第 3 节的动作串成一次点击：
+%   把《构建与部署》中实验一的手动流程串成一次点击：
 %     板上启动 sdr_rx 采集 → 宿主机扬声器播放单频正弦 → 等采集窗口跑完
 %     → 取回 single_f.mat → FFT 找谱峰 → 与设定载波比对
 %
@@ -11,7 +11,7 @@ function gui()
 %   五个实验共用；本文件只提供单频特有的发波与频谱分析。
 %
 %   注意：本界面是便利封装。教学正路仍是 single_fre_emit / spectrum 两个脚本
-%   手动跑（见 documents/手把手部署运行教程.md）。
+%   手动跑（见 documents/构建与部署.md）。
 
     here = fileparts(mfilename('fullpath'));
     if isempty(here), here = pwd; end

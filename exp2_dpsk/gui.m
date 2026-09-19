@@ -3,7 +3,7 @@ function gui()
 %
 %   用法：cd 到本文件所在目录(exp2_dpsk/)后直接运行 gui
 %
-%   把「手把手部署运行教程」第 4 节的动作串成一次点击：
+%   把《构建与部署》中实验二的手动流程串成一次点击：
 %     板上启动 dpsk_rx 采集 → 宿主机扬声器播放 DPSK 信号 → 等采集窗口跑完
 %     → 取回 dpsk5.mat → 帧同步/判决/算 BER → 显示还原点阵
 %
@@ -15,7 +15,7 @@ function gui()
 %   五个实验共用；本文件只提供 DPSK 特有的组帧/调制/解码。
 %
 %   注意：本界面是便利封装。教学正路仍是 dpsk_emit / dpsk_rev 两个脚本手动跑
-%   （见 documents/手把手部署运行教程.md）。GUI 可选择 MATLAB 脚本或 Simulink 模型发送。
+%   （见 documents/构建与部署.md）。GUI 可选择 MATLAB 脚本或 Simulink 模型发送。
 
     here = fileparts(mfilename('fullpath'));
     if isempty(here), here = pwd; end

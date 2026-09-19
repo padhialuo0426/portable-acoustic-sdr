@@ -2,7 +2,7 @@
 
 本实验把图片的像素亮度变成不同频率的音调，按行发送，再从接收音频中恢复图片。默认将输入图片二值化，便于观察黑白边界；关闭二值化后，同一条收发链可以发送彩色图片。
 
-本页以 Martin M1 为例解释图像扫描，并比较 20 种常用模式的扫描结构、模式识别和鉴频接收。操作见[部署运行教程 · 实验五](手把手部署运行教程.md#实验五)，函数与数据格式见[接口与参数参考](接口与参数参考.md#实验五参数)。
+本页以 Martin M1 为例解释图像扫描，并比较 20 种常用模式的扫描结构、模式识别和鉴频接收。操作见[构建与部署 · 实验五](构建与部署.md#实验五)，函数与数据格式见[接口与参数参考](接口与参数参考.md#实验五参数)。
 
 ## 从数字比特传输到模拟图像扫描
 
@@ -72,7 +72,7 @@ f(v)=1500+800\frac{v}{255}\quad\mathrm{Hz}
 
 48 kHz 下每像素约 21.9648 个采样点，不能把每个像素独立四舍五入到 22 点，否则误差会逐行累积。发射端按累计时间确定采样边界，让整幅图的扫描时序保持一致。
 
-时序与 VIS 定义对照 [PySSTV 的 Martin M1 实现](https://github.com/dnet/pySSTV/blob/master/pysstv/color.py)和[公共头编码](https://github.com/dnet/pySSTV/blob/master/pysstv/sstv.py)。其他模式的时序还参考 [N7CXI 模式说明](https://www.classicsstv.com/downloads/daytonpaper.pdf)与 [PD 模式作者说明](https://www.classicsstv.com/pdmodes.php)。模式表之外的格式、数字 SSTV 和呼号编码不在本实验范围内。
+VIS 头与模式时序可对照 [N7CXI 模式说明](https://www.classicsstv.com/downloads/daytonpaper.pdf)，PD 模式另见 [PD 模式作者说明](https://www.classicsstv.com/pdmodes.php)。模式表之外的格式、数字 SSTV 和呼号编码不在本实验范围内。
 
 ## 常用模式的区别
 

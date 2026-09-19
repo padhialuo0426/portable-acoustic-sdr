@@ -18,19 +18,18 @@
 - [`documents/实验三_chirp扩频.md`](documents/实验三_chirp扩频.md) — 扫频、相关检测和多速率模型原理
 - [`documents/实验四_V22bis.md`](documents/实验四_V22bis.md) — QPSK/16-QAM、符号恢复和 HDLC/FCS 原理
 - [`documents/实验五_SSTV.md`](documents/实验五_SSTV.md) — 二值/彩色图像、VIS、逐行扫描和鉴频接收原理
-- [`documents/手把手部署运行教程.md`](documents/手把手部署运行教程.md) — **从零到实测分步操作**（传代码上板→编译→实测→解码）
-- [`documents/构建与部署.md`](documents/构建与部署.md) — 代码生成、上传、重建和文件回放
+- [`documents/构建与部署.md`](documents/构建与部署.md) — 从裸工程开始生成 C、命令行部署、MATLAB 收发与解码；含 GUI 简介和文件回放
 - [`documents/接口与参数参考.md`](documents/接口与参数参考.md) — 环境、入口、参数、模型接口和数据格式
 - [`documents/Q&A.md`](documents/Q&A.md) — **常见问题与坑点**（先看这个）
 
 ## 快速开始
 
-1. 按[部署运行教程](documents/手把手部署运行教程.md#准备环境)准备 MATLAB 及代码生成产品、Linux 开发板和音频通路。
+1. 按[构建与部署](documents/构建与部署.md#准备环境)准备 MATLAB 及代码生成产品、Linux 开发板和音频通路。
 2. 按[构建与部署](documents/构建与部署.md#生成模型代码)生成接收模型 C，再上传到板上编译。生成 C 不入库，新克隆后需先生成一次；发送 GUI 可切换 MATLAB 脚本与 Simulink 模型，默认 MATLAB；两种方式均无需生成发送 C。
-3. 按[实验一操作步骤](documents/手把手部署运行教程.md#实验一)先启动采集，再播放 1 kHz 单音，取回数据查看频谱。
+3. 按[实验一操作步骤](documents/构建与部署.md#实验一)先启动采集，再播放 1 kHz 单音，取回数据查看频谱。
 4. 再切换到图片实验，检查还原点阵、BER 和实验四星座图；实验五观察逐行图像恢复与像素误差。
 
-没有声卡或 MATLAB 生成代码时，可以先做[桩模型管线检查](documents/构建与部署.md#构建模式)。实验二、三的 Python 脚本支持在已有真实接收程序的环境中发射与解码；它们不代替模型 C 的生成。
+没有声卡或 MATLAB 生成代码时，可以先做[桩模型管线检查](documents/构建与部署.md#构建模式)。
 
 ## 目录结构
 
@@ -57,7 +56,6 @@
     ├── model/tx_*.m               分立发送模块源码
     ├── dpsk_receive_ert_rtw/       接收模型生成 C（不入库）
     ├── src/                      手写接收运行时
-    ├── py/                       Python 发射与解码脚本
     ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
     ├── sample_data/              随仓库提供的接收样例
     └── baseband_images/           基带图片
