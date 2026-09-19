@@ -10,11 +10,13 @@ function gui()
 %   界面骨架、板上连接、同步编译、电平校准都在 common/matlab/+asdr 里，
 %   五个实验共用；本文件只提供单频特有的发波与频谱分析。
 %
-%   注意：本界面是便利封装。教学正路仍是 single_fre_emit / spectrum 两个脚本
+%   注意：本界面是便利封装。教学正路仍是 single_fre_emit / single_fre_decode 两个脚本
 %   手动跑（见 documents/构建与部署.md）。
 
     here = fileparts(mfilename('fullpath'));
     if isempty(here), here = pwd; end
+    addpath(fullfile(here,'gui_support'));
+    if isfolder(fullfile(here,'lib')), addpath(fullfile(here,'lib')); end
     addpath(fullfile(here,'..','common','matlab'));   % +asdr 共用层
 
     P.fs = 8000;
@@ -62,7 +64,7 @@ function meta = prepare(app, P)
     meta.desc = sprintf('单频 %g Hz', app.ui.fc.Value);
 end
 
-% 与 spectrum.m 等价：81×N 去掉时间行、逐列拼长向量、去直流、FFT 找正频峰
+% 与 single_fre_decode.m 等价：81×N 去掉时间行、逐列拼长向量、去直流、FFT 找正频峰
 function analyze(app, matfile, P)
     if ~isfile(matfile)
         app.logStep('分析', '✗', '本地没有 single_f.mat，先做一次实测'); return

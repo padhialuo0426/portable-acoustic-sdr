@@ -3,7 +3,7 @@
  *
  * 流程：ALSA 采集 960 样本/帧(10Hz) → 合并声道喂模型 → model_step_frame()
  *       → 取 120 个 double(60 个符号的 I,Q) → 写 v22sym.mat(v22Sym)。
- * PC 端 v22_rev.m 读 v22sym.mat 做判决/差分/解扰/HDLC/还原图片。
+ * PC 端 v22_decode.m 读 v22sym.mat 做判决/差分/解扰/HDLC/还原图片。
  *
  * 时序：ALSA 阻塞读 960 帧@9600Hz 天然 100ms = 10Hz 实时节拍。
  *

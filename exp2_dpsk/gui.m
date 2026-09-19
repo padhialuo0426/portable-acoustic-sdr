@@ -14,11 +14,13 @@ function gui()
 %   界面骨架、板上连接、同步编译、电平校准都在 common/matlab/+asdr 里，
 %   五个实验共用；本文件只提供 DPSK 特有的组帧/调制/解码。
 %
-%   注意：本界面是便利封装。教学正路仍是 dpsk_emit / dpsk_rev 两个脚本手动跑
+%   注意：本界面是便利封装。教学正路仍是 dpsk_emit / dpsk_decode 两个脚本手动跑
 %   （见 documents/构建与部署.md）。GUI 可选择 MATLAB 脚本或 Simulink 模型发送。
 
     here = fileparts(mfilename('fullpath'));
     if isempty(here), here = pwd; end
+    addpath(fullfile(here,'gui_support'));
+    if isfolder(fullfile(here,'lib')), addpath(fullfile(here,'lib')); end
     addpath(fullfile(here,'..','common','matlab'));   % +asdr 共用层
 
     P.fs   = 8000;             % 采样率
@@ -65,7 +67,7 @@ function meta = prepare(app, P)
     meta.NN = NN;  meta.MM = MM;
 end
 
-% 帧同步 + 判决（与 dpsk_rev.m 等价；另外把 flag=-1 的极性反转也试一遍）
+% 帧同步 + 判决（与 dpsk_decode.m 等价；另外把 flag=-1 的极性反转也试一遍）
 function [ber, bmp, l1, l2, flag] = decodeStream(xs, info_all, NN, MM)
     pm = [-1;1;1;-1;-1;1;-1;1;-1;-1;-1;-1;1;1;1];
     % 判决值是相关幅度（量级可达 1e6），不是 ±1，门限按整段峰值自适应

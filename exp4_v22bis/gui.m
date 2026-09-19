@@ -15,13 +15,14 @@ function gui()
 %   本实验板上出的是 121×N 的复符号，解码走 HDLC，所以 analyze 自己写。
 %   发图下拉、结果面板、点阵显示仍然复用 ImageUI。
 %
-%   注意：本界面是便利封装。教学正路仍是 v22_emit / v22_rev 两个脚本手动跑。
-%   与前三个实验不同，本文件**不重复**组帧/调制/解码逻辑——那些已经抽成
-%   v22_mod / v22_demod / v22_pack / v22_unpack 等函数，界面直接调用，
-%   不存在"改帧结构要改两边"的问题。
+%   注意：本界面是便利封装。教学正路仍是 v22_emit / v22_decode 两个脚本手动跑。
+%   MATLAB 分支运行完整的独立 v22_emit 脚本；模型分支使用自己的组帧入口。
+%   协议参数或帧结构变化时，两套发送实现须分别修改并比较波形。
 
     here = fileparts(mfilename('fullpath'));
     if isempty(here), here = pwd; end
+    addpath(fullfile(here,'gui_support'));
+    if isfolder(fullfile(here,'lib')), addpath(fullfile(here,'lib')); end
     addpath(fullfile(here,'..','common','matlab'));   % +asdr 共用层
 
     P.imgdir = fullfile(here,'baseband_images');
@@ -104,14 +105,18 @@ function [txt, dur] = durationText(app, P)
                    dur, nsym, NN*MM, numel(payload));
 end
 
-% 组帧 + 调制。直接调用与脚本、仿真同一份实现。
+% 组帧 + 调制：先选择实现，再进入各自独立的发送链。
 function meta = prepare(app, P)
     % 新任务在连接/采集之前就清空旧结果；中止或下载失败也不会遗留成功图。
     resetResults(app);
     name = app.ui.img.Value;
-    Pm   = v22_params(pickRate(app));
-    [payload, NN, MM] = v22_img2payload(P.imgdir, name, Pm.bps);
-    x = v22_mod(v22_pack(payload), Pm, app.ui.txBackend.Value);
+    if strcmp(app.ui.txBackend.Value,'matlab')
+        [x,payload,Pm,NN,MM] = matlabImageTransmitter(fullfile(P.imgdir,name),pickRate(app));
+    else
+        Pm = v22_params(pickRate(app));
+        [payload,NN,MM] = v22_img2payload(P.imgdir,name,Pm.bps);
+        x = v22_mod(v22_pack(payload),Pm,'simulink');
+    end
 
     meta.x       = x / max(abs(x));
     meta.dur     = numel(x) / Pm.fs;
@@ -121,6 +126,14 @@ function meta = prepare(app, P)
     meta.payload = payload;
     meta.NN = NN;  meta.MM = MM;
     asdr.ImageUI.showBitmap(app.ui.axTx, v22_payload2img(payload), '本次发送点阵');
+end
+
+function [x,payload,Pm,NN,MM] = matlabImageTransmitter(imageFile,rate)
+    % 预声明由脚本填入的输出；输入结构也由该脚本读取。
+    x = []; payload = uint8([]); NN = 0; MM = 0;
+    sdrTxRequest = struct('imageFile',imageFile,'rate',rate); %#ok<NASGU>
+    run(fullfile(fileparts(mfilename('fullpath')),'v22_emit.m'));
+    Pm = P;
 end
 
 % 解码：读 v22sym.mat -> 判决/差分/解扰 -> HDLC -> BER + 点阵 + 星座

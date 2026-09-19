@@ -44,24 +44,27 @@
 └── exp5_sstv/           实验五 · SSTV 多模式，默认二值化，可保留彩色
 ```
 
-五个实验的 GUI、收发入口、建模脚本与 `.slx` 放在实验根目录，发送模块源码放在 `model/`。例如实验二：
+五个实验的根目录保留纯 MATLAB 发送机、Simulink 收发模型、MATLAB 解码器和 `gui.m` 入口。GUI 适配、共用算法和构建工具按用途放入子目录。例如实验二：
 
 ```text
-    exp2_dpsk/
-    ├── Makefile                  Linux 接收程序的构建入口
-    ├── dpsk_receive.slx           接收模型，用于生成 C
-    ├── dpsk_transmit.slx          发送模型，GUI 直接仿真
-    ├── build_tx_model.m           重建发送模型
-    ├── dpsk_modulate.m            脚本与 GUI 共用的波形入口
-    ├── model/tx_*.m               分立发送模块源码
-    ├── dpsk_receive_ert_rtw/       接收模型生成 C（不入库）
-    ├── src/                      手写接收运行时
-    ├── dpsk_emit.m  dpsk_rev.m  gui.m  setup_paths.m
+portable-acoustic-sdr/
+├── common/                       共用音频运行时与 GUI 框架
+└── exp2_dpsk/
+    ├── dpsk_emit.m               独立、单文件 MATLAB 发送机
+    ├── dpsk_transmit.slx         Simulink 发送机
+    ├── dpsk_receive.slx          Simulink 接收机
+    ├── dpsk_decode.m             独立、单文件 MATLAB 解码器
+    ├── gui.m                     GUI 入口，直接运行
+    ├── gui_support/              GUI 波形适配函数
+    ├── tools/                    模型构建工具
+    ├── model/                    模型内部模块源代码
+    ├── baseband_images/          发送图片
     ├── sample_data/              随仓库提供的接收样例
-    └── baseband_images/           基带图片
+    ├── src/                      板上接收程序
+    └── Makefile                  板上构建入口
 ```
 
-各实验的纯 MATLAB 调制函数放在 `private/`，实验四、五的其他内部算法也放在这里；实验五发送模型另带 `sstv_transmit.sldd` 总线类型字典。接收模型生成与发送模型直接仿真的分工见[构建与部署](documents/构建与部署.md)。
+五个纯 MATLAB 发送机均为实验根目录下的单文件实现：`single_fre_emit.m`、`dpsk_emit.m`、`bok_emit.m`、`v22_emit.m`、`sstv_emit.m`。复制发送文件和所选图片即可运行；算法、参数与模型发送分支分别实现。实验二至五的解码入口分别为 `dpsk_decode.m`、`bok_decode.m`、`v22_decode.m`、`sstv_decode.m`，所需算法和参数均在各自文件内。复制解码文件和接收数据、参考数据即可运行，不需要发送机或 GUI；实验一的 `single_fre_decode.m` 独立完成频谱分析。实验四、五的 `lib/` 供 GUI 和模型分支使用；实验五的 `sstv_transmit.sldd` 是发送模型必需的总线类型字典，与模型一起保留在根目录。接收模型生成与发送模型直接仿真的分工见[构建与部署](documents/构建与部署.md)。
 
 ## 致谢与许可
 

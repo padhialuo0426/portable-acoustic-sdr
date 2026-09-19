@@ -1,29 +1,40 @@
-%% 实验一 · 发射端：PC 端 MATLAB 脚本，用 sound() 经扬声器播放单频信号
-%  默认纯 MATLAB；TX_BACKEND 改为 'simulink' 可仿真发送模型，无需生成发送 C。
-%  接收端是板上的 single_fre_rev（build/sdr_rx），采集→滤波→记录到 .mat。
-% clc
-% clear
-%% 基本参数设置 %%
-time=1;
-fs=8000;                   % 采样率
-t=0:1/fs:time;
-fc=1000;                   % 载波频率
-TX_BACKEND='matlab';        % 'matlab' 或 'simulink'
+%% 实验一 · 纯 MATLAB 单文件发送机：单频正弦信号
+%  直接运行本文件即可播放；不需要模型、建模脚本或工程内的辅助函数。
+%  教学时依次阅读参数、采样、正弦公式和播放四步。
 
-%% 单频 %%
-A=1;
-x=single_fre_modulate(fc,numel(t),A,TX_BACKEND);
+%% 1. 参数
+fs = 8000;                       % 采样率，赫兹
+fc = 1000;                       % 载波频率，赫兹
+time = 1;                        % 时长，秒（保留原脚本的末端采样点）
+A = 1;                           % 正弦幅度
+PLAY_AUDIO = true;
+SHOW_FIGURE = true;
+samples = round(time*fs)+1;
 
-%% 产生声音信号 %%
-sound(x, fs)
+% GUI 的 MATLAB 分支只传参数、取波形；直接运行时不需要此结构。
+if exist('sdrTxRequest','var')
+    fc = sdrTxRequest.fc;
+    samples = sdrTxRequest.samples;
+    A = sdrTxRequest.amplitude;
+    PLAY_AUDIO = false;
+    SHOW_FIGURE = false;
+end
+validateattributes(fc,{'numeric'},{'scalar','real','finite','positive','<',fs/2});
+validateattributes(samples,{'numeric'},{'scalar','integer','positive'});
+validateattributes(A,{'numeric'},{'scalar','real','finite'});
 
-figure;
-plot(x);
-title('发送端的发送信号')
+%% 2. 离散采样时刻
+n = 0:samples-1;
+t = n/fs;
 
-% X_fft=fft(x(1:8000));      % 快速傅里叶变换
-% nn=length(X_fft);
-% f=(-nn/2:nn/2-1)*(fs/nn);
-% X_shift= fftshift(X_fft);
-% figure;
-% plot(f,abs(X_shift))
+%% 3. 正弦调制：x[n] = A sin(2*pi*fc*n/fs)
+x = A*sin(2*pi*fc*n/fs);
+
+%% 4. 播放与显示
+if PLAY_AUDIO, sound(x,fs); end
+if SHOW_FIGURE
+    figure;
+    plot(t,x);
+    xlabel('时间（秒）'); ylabel('幅度'); title('发送端的单频信号');
+end
+clear sdrTxRequest

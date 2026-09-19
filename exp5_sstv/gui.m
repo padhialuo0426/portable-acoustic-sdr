@@ -1,6 +1,8 @@
 function gui()
 %GUI  实验五 SSTV 多模式：默认发送二值图，也可选择任意图片保留彩色。
-    here=fileparts(mfilename('fullpath'));addpath(fullfile(here,'..','common','matlab'));
+    here=fileparts(mfilename('fullpath'));addpath(fullfile(here,'gui_support'));
+    if isfolder(fullfile(here,'lib')), addpath(fullfile(here,'lib')); end
+    addpath(fullfile(here,'..','common','matlab'));
     spec.title='实验五 · SSTV 多模式图像传输';
     spec.binary='sstv_rx';spec.outMat='sstvfreq.mat';spec.fs=48000;spec.showDuration=true;
     spec.buildParams=@(app,g,lab)buildParams(app,g,lab,here);
@@ -63,8 +65,13 @@ function preview(app)
 end
 function meta=prepare(app)
     resetResults(app);P=sstv_params(app.ui.mode.Value);binary=app.ui.binary.Value;
-    reference=sstv_prepare_image(app.ui.imageFile.Value,binary,P);
-    [audio,tx]=sstv_modulate(reference,P,app.ui.txBackend.Value);
+    if strcmp(app.ui.txBackend.Value,'matlab')
+        [audio,tx]=sstv_modulate(app.ui.imageFile.Value,P,'matlab',binary);
+        reference=tx.image;
+    else
+        reference=sstv_prepare_image(app.ui.imageFile.Value,binary,P);
+        [audio,tx]=sstv_simulate_transmitter(reference,P);
+    end
     meta=struct('x',audio,'dur',tx.duration,'desc',sprintf('%s · %d×%d',P.mode,P.width,P.height), ...
         'reference',reference,'binary',binary,'P',P);
     showImage(app.ui.axTx,reference,'本次发送图片');

@@ -34,7 +34,7 @@ classdef TxModel
         end
         function finish(mdl,here,titleText,width)
             a=Simulink.Annotation(mdl,titleText);a.Position=[100 20 width 70];a.FontSize=12;
-            a=Simulink.Annotation(mdl,'GUI 与发送脚本直接仿真本模型；收集音频后由电脑声卡播放，无需生成发送代码。');
+            a=Simulink.Annotation(mdl,'GUI 的模型分支或波形接口直接仿真本模型；收集音频后播放，无需生成发送代码。');
             a.Position=[100 380 width 420];a.FontSize=11;
             set_param(mdl,'SimulationCommand','update');set_param(mdl,'ZoomFactor','FitSystem');
             save_system(mdl,fullfile(here,[mdl '.slx']));open_system(mdl);

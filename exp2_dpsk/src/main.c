@@ -3,7 +3,7 @@
  *
  * 流程：ALSA 采集 80 样本/帧(100Hz) → 去交织喂模型 → model_step_frame()
  *       → 取标量 out_data → 写 dpsk5.mat(toFileData5)。
- * PC 端 dpsk_rev.m 读 dpsk5.mat 的 toFileData5(2,:) 做帧同步/判决/BER/还原图像。
+ * PC 端 dpsk_decode.m 读 dpsk5.mat 的 toFileData5(2,:) 做帧同步/判决/BER/还原图像。
  *
  * 时序：一帧 80 样本正好是发射端的一个 DPSK 符号（fs/符号率 = 8000/100 = 80），
  * ALSA 阻塞读 80 帧@8000Hz 天然给出 10ms = 100Hz 的实时节拍。
